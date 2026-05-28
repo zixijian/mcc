@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "package": "net.mcc.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ClientPlayerEntityMixin",
+    "ClientPlayNetworkHandlerMixin",
+    "ChatHudMixin",
+    "ChatScreenMixin",
+    "MinecraftClientMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

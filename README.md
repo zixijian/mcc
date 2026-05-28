@@ -1,2 +1,49 @@
-# mcc
-Minecraft Cli Tool,TUI env: HeadlessMC &amp; TINTIN++ .Server Info &amp; Auto mapping.
+# MCC - Minecraft CLI Tool
+
+这是一个基于 Fabric 的 Minecraft 客户端辅助模组，采用“零链接”反射方案，兼容 1.21.1 及以上所有版本。
+
+## 功能特性
+
+- **多重拦截机制**：本地拦截所有 `/mcc` 开头的命令，防止发送到服务器导致“未知命令”错误。
+- **性能监测**：实时计算 TPS 和 MSPT。
+- **玩家信息**：查看在线玩家列表（支持排序和颜色识别）、血量、饱食度及详细经验信息。
+- **物品管理**：查看和切换快捷栏物品，输出详细的物品 ID、数量及耐久度。
+- **自动化行为**：支持自动攻击、自动使用、自动复活、设定朝向和移动。
+- **多频道输出**：支持将信息输出到游戏聊天框或标准输出（终端），并支持 ANSI 或 § 颜色代码。
+
+## 命令列表
+
+- `/mcc` - 显示模组命令列表和语法。
+- `/mcc time` - 显示游戏时间和现实时间。
+- `/mcc list` - 显示在线玩家列表。本人排第一，黄名靠前，其余按字母排序。
+- `/mcc hp` - 显示玩家当前血量和饱食度。
+- `/mcc xp` - 显示玩家等级、当前经验值、升级进度及总经验。
+- `/mcc tps` - 显示服务器 TPS 和 MSPT（本地估算）。
+- `/mcc choose/cs <0-8>` - 选择快捷栏槽位并输出物品信息。
+- `/mcc slot` - 输出当前选中槽位的物品信息。
+- `/mcc tools` - 列出快捷栏所有槽位的物品信息。
+- `/mcc attack/atk [频率]` - 自动攻击。频率 0 为持续，>0 为指定 tick 间隔。
+- `/mcc use [频率]` - 自动使用。频率 0 为持续，>0 为指定 tick 间隔。
+- `/mcc respawn` - 开启/关闭自动复活。
+- `/mcc look <pitch> <yaw>` - 设定玩家朝向（俯仰角在前，偏航角在后）。
+- `/mcc move <动作> [0]` - 设定玩家移动（forward, back, left, right, jump, sneak）。加 0 为持续。
+- `/mcc status` - 查看当前自动行为状态。
+- `/mcc stop` - 停止所有自动行为。
+- `/mcc tune <1-4>` - 切换输出频道。1: Chat (无颜色), 2: Stdout (ANSI), 3: Both, 4: Chat (§颜色)。
+
+## 编译指南
+
+模组支持在 Termux 环境下使用 `gradlew` 编译。
+
+```bash
+chmod +x gradlew
+./gradlew build
+```
+
+编译产物位于 `build/libs/mcc-1.0-dev.jar`。
+
+## 技术细节
+
+- **零链接 (Zero-Link)**：除了 Fabric Loader 和必要的 Java 类外，不直接链接 Minecraft 类，通过反射和 `MappingHelper` 在运行时动态获取字段和方法。
+- **兼容性**：支持 1.21.1 - 1.21.x（已在 1.21.4 和 1.21.11 上通过测试）。
+- **版本适配**：针对 1.21.4+ 的 Record 数据包和 1.21.2+ 的输入系统进行了专项适配，确保 `/mcc time`、`/mcc list` 以及自动化指令在全版本工作正常。
