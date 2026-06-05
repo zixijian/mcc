@@ -142,11 +142,31 @@ public class PlayerListInfo {
     }
 
     private static Collection<?> scanForPlayerMap(Object nh) {
-        // 1.21.4+ 直接尝试已知字段 field_52609
+        // 策略 0: 指纹识别 (Structural Fingerprinting) - 针对 1.21.11 最稳
         try {
-            Object val = MappingHelper.getFieldValue(nh, "field_52609", null);
-            if (val instanceof Map) return ((Map<?, ?>) val).values();
+            java.util.Map<?, ?> map = MappingHelper.findPlayerMapFingerprint(nh);
+            if (map != null) return map.values();
         } catch (Exception ignored) {}
+
+        // 策略 1: 优先使用官方映射方法名，它们在 1.21.11 中最稳定
+        String[] methods = {"getPlayerList", "getListedPlayerListEntries", "method_2871", "method_46533"};
+        for (String m : methods) {
+            try {
+                Object res = MappingHelper.invokeMethod(nh, m);
+                if (res instanceof Collection && !((Collection<?>) res).isEmpty()) return (Collection<?>) res;
+                if (res instanceof Map && !((Map<?, ?>) res).isEmpty()) return ((Map<?, ?>) res).values();
+            } catch (Exception ignored) {}
+        }
+
+        // 1.21.11 / 1.21.4+ 候选字段
+        String[] fields = {"field_52609", "field_42514", "field_3695"};
+        for (String f : fields) {
+            try {
+                Object val = MappingHelper.getFieldValue(nh, f, null);
+                if (val instanceof Map) return ((Map<?, ?>) val).values();
+                if (val instanceof Collection) return (Collection<?>) val;
+            } catch (Exception ignored) {}
+        }
 
         Class<?> curr = nh.getClass();
         while (curr != null && curr != Object.class) {
@@ -187,9 +207,54 @@ public class PlayerListInfo {
     }
 
     private static String extractName(Object entry) {
+        if (entry == null) return null;
         try {
-            Object profile = MappingHelper.invokeMethod(entry, "getProfile");
-            if (profile != null) return (String) MappingHelper.invokeMethod(profile, "getName");
+            // 策略 1: getProfile().getName()
+            Object profile = null;
+            String[] profileMethods = {"getProfile", "method_2966", "m_92539_"};
+            for (String m : profileMethods) {
+                try { profile = MappingHelper.invokeMethod(entry, m); if (profile != null) break; } catch (Exception ignored) {}
+            }
+
+            if (profile == null) {
+                // 尝试从字段获取 profile (field_3944, f_104886_)
+                String[] profileFields = {"field_3944", "f_104886_", "profile"};
+                for (String f : profileFields) {
+                    try { profile = MappingHelper.getFieldValue(entry, f, null); if (profile != null) break; } catch (Exception ignored) {}
+                }
+            }
+
+            if (profile != null) {
+                String[] nameMethods = {"getName", "method_2087", "m_92546_"};
+                for (String m : nameMethods) {
+                    try { return (String) MappingHelper.invokeMethod(profile, m); } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // 策略 2: 暴力扫描 entry 对象及其子对象中的 String 字段
+        return aggressiveNameSearch(entry, 0);
+    }
+
+    private static String aggressiveNameSearch(Object obj, int depth) {
+        if (obj == null || depth > 2) return null;
+        try {
+            Class<?> curr = obj.getClass();
+            while (curr != null && curr != Object.class) {
+                for (java.lang.reflect.Field f : curr.getDeclaredFields()) {
+                    if (f.getType() == String.class) {
+                        f.setAccessible(true);
+                        String val = (String) f.get(obj);
+                        if (val != null && val.length() >= 3 && val.length() <= 16 && !val.contains(" ") && !val.contains("/")) return val;
+                    } else if (!f.getType().isPrimitive() && !f.getType().getName().startsWith("java.")) {
+                        f.setAccessible(true);
+                        Object sub = f.get(obj);
+                        String res = aggressiveNameSearch(sub, depth + 1);
+                        if (res != null) return res;
+                    }
+                }
+                curr = curr.getSuperclass();
+            }
         } catch (Exception ignored) {}
         return null;
     }

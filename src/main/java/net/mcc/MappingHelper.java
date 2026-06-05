@@ -166,7 +166,32 @@ public class MappingHelper {
     }
 
     public static Class<?> getClass(String yarnName) throws ClassNotFoundException {
-        return Class.forName(map(yarnName).replace('/', '.'));
+        String mapped = map(yarnName).replace('/', '.');
+        try {
+            return Class.forName(mapped);
+        } catch (ClassNotFoundException e) {
+            // 针对 1.21.11+ 的官方名回退策略
+            String official = getOfficialClassName(yarnName);
+            if (official != null) {
+                try { return Class.forName(official); } catch (ClassNotFoundException ignored) {}
+            }
+            throw e;
+        }
+    }
+
+    private static String getOfficialClassName(String yarnName) {
+        switch (yarnName) {
+            case "MinecraftClient": return "net.minecraft.client.MinecraftClient";
+            case "ClientPlayerEntity": return "net.minecraft.client.network.ClientPlayerEntity";
+            case "ClientPlayNetworkHandler": return "net.minecraft.client.network.ClientPlayNetworkHandler";
+            case "PlayerListEntry": return "net.minecraft.client.network.PlayerListEntry";
+            case "Text": return "net.minecraft.network.chat.Component";
+            case "Style": return "net.minecraft.network.chat.Style";
+            case "TextColor": return "net.minecraft.network.chat.TextColor";
+            case "Input": return "net.minecraft.client.player.Input";
+            case "Screen": return "net.minecraft.client.gui.screens.Screen";
+            default: return null;
+        }
     }
 
     public static Field findField(Class<?> clazz, String yarnName) throws NoSuchFieldException {
@@ -410,5 +435,109 @@ public class MappingHelper {
             curr = curr.getSuperclass();
         }
         return null;
+    }
+
+    private static Map<?, ?> cachedPlayerMap = null;
+    private static Object lastPlayerMapOwner = null;
+    private static java.util.Set<Integer> visited = new java.util.HashSet<>();
+
+    public static Map<?, ?> findPlayerMapFingerprint(Object nh) {
+        if (nh == null) return null;
+        if (nh == lastPlayerMapOwner && cachedPlayerMap != null) return cachedPlayerMap;
+
+        visited.clear();
+        // 策略 0: 直接根据已知字段名查找 (Mojang / Intermediary / 1.21.11)
+        String[] possibleFields = {"f_104895_", "field_42514", "field_52609", "field_3695", "playerListEntries"};
+        for (String fName : possibleFields) {
+            try {
+                Field f = nh.getClass().getDeclaredField(fName);
+                f.setAccessible(true);
+                Object val = f.get(nh);
+                if (val instanceof Map) {
+                    cachedPlayerMap = (Map<?, ?>) val; lastPlayerMapOwner = nh;
+                    return cachedPlayerMap;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 策略 1: 扫描 NetworkHandler
+        Map<?, ?> found = scanForPlayerMapInternal(nh);
+        if (found != null) {
+            cachedPlayerMap = found; lastPlayerMapOwner = nh;
+            return found;
+        }
+
+        // 策略 2: 深度递归扫描
+        found = deepSearchPlayerMap(nh, 0);
+        if (found != null) {
+            cachedPlayerMap = found; lastPlayerMapOwner = nh;
+        }
+        return found;
+    }
+
+    private static Map<?, ?> scanForPlayerMapInternal(Object obj) {
+        Class<?> curr = obj.getClass();
+        while (curr != null && curr != Object.class) {
+            for (Field f : curr.getDeclaredFields()) {
+                if (Map.class.isAssignableFrom(f.getType())) {
+                    try {
+                        f.setAccessible(true);
+                        Map<?, ?> map = (Map<?, ?>) f.get(obj);
+                        if (map != null && !map.isEmpty()) {
+                            Object firstKey = map.keySet().iterator().next();
+                            Object firstVal = map.values().iterator().next();
+                            if (firstKey instanceof java.util.UUID || String.valueOf(firstKey).length() > 30) {
+                                if (isPlayerEntry(firstVal)) return map;
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+            curr = curr.getSuperclass();
+        }
+        return null;
+    }
+
+    private static boolean isPlayerEntry(Object val) {
+        if (val == null) return false;
+        String cn = val.getClass().getName();
+        if (cn.contains("PlayerListEntry") || cn.contains("class_640") || cn.contains("NetworkPlayerInfo") || cn.contains("PlayerInfo") || cn.contains("Profile")) return true;
+        for (Field f : val.getClass().getDeclaredFields()) {
+            String ftn = f.getType().getName();
+            if (ftn.contains("GameProfile") || ftn.contains("class_1923") || ftn.contains("Profile")) return true;
+        }
+        return false;
+    }
+
+    private static Map<?, ?> deepSearchPlayerMap(Object obj, int depth) {
+        if (obj == null || depth > 3) return null;
+        int id = System.identityHashCode(obj);
+        if (visited.contains(id)) return null;
+        visited.add(id);
+
+        Map<?, ?> found = scanForPlayerMapInternal(obj);
+        if (found != null) return found;
+
+        Class<?> curr = obj.getClass();
+        while (curr != null && curr != Object.class) {
+            for (Field f : curr.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) continue;
+                try {
+                    f.setAccessible(true);
+                    Object val = f.get(obj);
+                    if (val != null && shouldScan(val)) {
+                        Map<?, ?> res = deepSearchPlayerMap(val, depth + 1);
+                        if (res != null) return res;
+                    }
+                } catch (Exception ignored) {}
+            }
+            curr = curr.getSuperclass();
+        }
+        return null;
+    }
+
+    private static boolean shouldScan(Object val) {
+        String name = val.getClass().getName();
+        return !name.startsWith("java.") && !name.startsWith("sun.") && !name.startsWith("com.google.") && !name.startsWith("org.lwjgl.");
     }
 }
