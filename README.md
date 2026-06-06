@@ -22,14 +22,15 @@
 - `/mcc choose/cs <0-8>` - 选择快捷栏槽位并输出物品信息。
 - `/mcc slot` - 输出当前选中槽位的物品信息。
 - `/mcc tools` - 列出快捷栏所有槽位的物品信息。
-- `/mcc attack/atk [频率]` - 自动攻击。频率 0 为持续，>0 为指定 tick 间隔。
-- `/mcc use [频率]` - 自动使用。频率 0 为持续，>0 为指定 tick 间隔。
+- `/mcc drop [slot|all]` - 丢弃物品。指定槽位 0-8（成功后切回原槽位），或 all 轮询丢弃所有快捷栏物品（不切回）。内置防幽灵同步机制。
+- `/mcc attack/atk [频率]` - 自动攻击。频率 0 为持续，>0 为指定 tick 间隔。不加参数执行一次。
+- `/mcc use [频率]` - 自动使用。频率 0 为持续，>0 为指定 tick 间隔。不加参数执行一次。
 - `/mcc respawn` - 开启/关闭自动复活。
-- `/mcc look <pitch> <yaw>` - 设定玩家朝向（俯仰角在前，偏航角在后）。
-- `/mcc move <动作> [0]` - 设定玩家移动（forward, back, left, right, jump, sneak）。加 0 为持续。
+- `/mcc look <pitch> <yaw>` - 设定玩家朝向（俯仰角在前，偏航角在后）。直接输入 `/mcc look` 查看当前朝向。
+- `/mcc move <动作> [0]` - 设定玩家移动。动作支持：forward(w), back(s), left(a), right(d), jump(space), sneak(shift), stop。加 0 为持续。
 - `/mcc status` - 查看当前自动行为状态。
 - `/mcc stop` - 停止所有自动行为。
-- `/mcc tune <1-4>` - 切换输出频道。1: Chat (无颜色), 2: Stdout (ANSI), 3: Both, 4: Chat (§颜色)。
+- `/mcc tune <1-4>` - 切换输出频道。1: Chat (无颜色), 2: Stdout (ANSI, 默认), 3: Both, 4: Chat (§颜色)。
 
 ## 编译指南
 
@@ -46,4 +47,4 @@ chmod +x gradlew
 
 - **零链接 (Zero-Link)**：除了 Fabric Loader 和必要的 Java 类外，不直接链接 Minecraft 类，通过反射和 `MappingHelper` 在运行时动态获取字段和方法。
 - **兼容性**：支持 1.21.1 - 1.21.x（已在 1.21.4 和 1.21.11 上通过测试）。
-- **版本适配**：针对 1.21.4+ 的 Record 数据包和 1.21.2+ 的输入系统进行了专项适配，确保 `/mcc time`、`/mcc list` 以及自动化指令在全版本工作正常。
+- **版本适配**：针对 1.21.4+ 的 Record 数据包、1.21.2+ 的输入系统以及 1.21.11 的结构偏移进行了专项适配，确保 `/mcc time`、`/mcc list` 以及自动化指令在全版本工作正常。

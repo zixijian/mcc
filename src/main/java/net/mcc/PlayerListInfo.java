@@ -66,27 +66,28 @@ public class PlayerListInfo {
                 try {
                     Object displayText = MappingHelper.invokeMethod(entry, "getDisplayName");
                     if (displayText != null) {
-                        // 策略 1: 检查 getString() 中是否包含 § 颜色代码 (针对 1.21.4 识别)
-                        String rawStr = (String) MappingHelper.invokeMethod(displayText, "getString");
-                        if (rawStr != null && (rawStr.contains("§e") || rawStr.contains("§6"))) {
-                            isYellow = true;
+                        // 策略 0: 检查 Style 的颜色
+                        Object style = MappingHelper.invokeMethod(displayText, "getStyle");
+                        if (style != null) {
+                            Object color = MappingHelper.invokeMethod(style, "getColor");
+                            if (color != null) {
+                                isYellow = isYellowColor(color);
+                            }
                         }
 
                         if (!isYellow) {
-                            Object style = MappingHelper.invokeMethod(displayText, "getStyle");
-                            if (style != null) {
-                                Object color = MappingHelper.invokeMethod(style, "getColor");
-                                if (color != null) {
-                                    String colorStr = color.toString().toUpperCase();
-                                    if (colorStr.contains("YELLOW") || colorStr.contains("GOLD")) isYellow = true;
-                                    else {
-                                        try {
-                                            int rgb = ((Number) MappingHelper.invokeMethod(color, "getRgb")).intValue();
-                                            // 0xFFFF55 是黄色, 0xFFAA00 是橙色/金
-                                            if (rgb == 16777045 || rgb == 16755200) isYellow = true;
-                                        } catch (Exception ignored) {}
-                                    }
-                                }
+                            // 策略 1: 检查 getString() 中是否包含 § 颜色代码
+                            String rawStr = (String) MappingHelper.invokeMethod(displayText, "getString");
+                            if (rawStr != null && (rawStr.contains("§e") || rawStr.contains("§6"))) {
+                                isYellow = true;
+                            }
+                        }
+
+                        if (!isYellow) {
+                            // 策略 2: 检查 toString()
+                            String textDesc = displayText.toString().toLowerCase();
+                            if (textDesc.contains("yellow") || textDesc.contains("gold") || textDesc.contains("§e") || textDesc.contains("§6")) {
+                                isYellow = true;
                             }
                         }
                     }
@@ -98,8 +99,7 @@ public class PlayerListInfo {
                         if (team != null) {
                             Object color = MappingHelper.invokeMethod(team, "getColor");
                             if (color != null) {
-                                String colorName = color.toString().toUpperCase();
-                                if (colorName.contains("YELLOW") || colorName.contains("GOLD")) isYellow = true;
+                                isYellow = isYellowColor(color);
                             }
                         }
                     } catch (Exception ignored) {}
@@ -257,6 +257,24 @@ public class PlayerListInfo {
             }
         } catch (Exception ignored) {}
         return null;
+    }
+
+    private static boolean isYellowColor(Object colorObj) {
+        if (colorObj == null) return false;
+        String str = colorObj.toString().toUpperCase();
+        // 检查名称 (YELLOW/GOLD) 或其 Intermediary 名 (field_1068=YELLOW, field_1054=GOLD)
+        if (str.contains("YELLOW") || str.contains("GOLD") || str.contains("field_1068") || str.contains("field_1054")) return true;
+
+        try {
+            // 尝试获取 RGB 值对比
+            Object rgbVal = MappingHelper.invokeMethod(colorObj, "getRgb");
+            if (rgbVal instanceof Number) {
+                int rgb = ((Number) rgbVal).intValue();
+                // 16777045 = 0xFFFF55 (Yellow), 16755200 = 0xFFAA00 (Gold)
+                return rgb == 16777045 || rgb == 16755200;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private static class EntryProxy {

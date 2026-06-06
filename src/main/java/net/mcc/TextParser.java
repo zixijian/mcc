@@ -40,6 +40,12 @@ public class TextParser {
                 if (i == 0 && !msg.startsWith("§")) {
                     if (part.isEmpty()) continue;
                     Object span = createLiteral(part);
+                    // 默认为白色，防止样式污染
+                    try {
+                        Object whiteStyle = MappingHelper.invokeMethod(root, "getStyle");
+                        whiteStyle = updateStyle(whiteStyle, 'f');
+                        MappingHelper.invokeMethod(span, "setStyle", whiteStyle);
+                    } catch (Exception ignored) {}
                     if (span != null) MappingHelper.invokeMethod(root, "append", span);
                     continue;
                 }

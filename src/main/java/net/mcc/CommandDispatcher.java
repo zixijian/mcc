@@ -19,7 +19,7 @@ public class CommandDispatcher {
         }
     }
 
-    private static OutputChannel currentChannel = OutputChannel.CHAT;
+    private static OutputChannel currentChannel = OutputChannel.STDOUT; // 默认 tune 2
     private static final List<String> feedbackBuffer = new ArrayList<>();
 
     public static boolean dispatch(String command) {
@@ -62,6 +62,21 @@ public class CommandDispatcher {
                     InventoryManager.showSlot(slotIdx);
                     break;
                 case "tools": InventoryManager.showTools(); break;
+                case "drop":
+                    if (parts.length > 2) {
+                        if (parts[2].equalsIgnoreCase("all")) {
+                            InventoryManager.dropAll();
+                        } else {
+                            try {
+                                InventoryManager.dropSlot(Integer.parseInt(parts[2]));
+                            } catch (NumberFormatException e) {
+                                addFeedback("§c无效槽位数字");
+                            }
+                        }
+                    } else {
+                        InventoryManager.dropSlot(-1);
+                    }
+                    break;
                 case "attack":
                 case "atk":
                     try {
@@ -114,7 +129,7 @@ public class CommandDispatcher {
     private static void showHelp() {
         addFeedback("§b[MCC 命令列表]");
         addFeedback("§f/mcc time | list | hp | xp | tps");
-        addFeedback("§f/mcc choose/cs <slot> | slot [slot] | tools");
+        addFeedback("§f/mcc choose/cs <slot> | slot [slot] | tools | drop [slot|all]");
         addFeedback("§f/mcc attack/atk [freq] | use [freq] | respawn");
         addFeedback("§f/mcc look <pitch> <yaw> | move <dir> [0]");
         addFeedback("§f/mcc status | stop | tune <1-4>");

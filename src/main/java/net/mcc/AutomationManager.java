@@ -102,16 +102,28 @@ public class AutomationManager {
     }
 
     public static void setMove(String dir, boolean continuous) {
-        switch (dir.toLowerCase()) {
-            case "forward": moveForward = continuous; moveForwardOnce = !continuous; break;
-            case "back": moveBack = continuous; moveBackOnce = !continuous; break;
-            case "left": moveLeft = continuous; moveLeftOnce = !continuous; break;
-            case "right": moveRight = continuous; moveRightOnce = !continuous; break;
-            case "jump": moveJump = continuous; moveJumpOnce = !continuous; break;
-            case "sneak": moveSneak = continuous; moveSneakOnce = !continuous; break;
+        boolean valid = true;
+        String action = dir.toLowerCase();
+        switch (action) {
+            case "forward": case "w": moveForward = continuous; moveForwardOnce = !continuous; break;
+            case "back": case "s": moveBack = continuous; moveBackOnce = !continuous; break;
+            case "left": case "a": moveLeft = continuous; moveLeftOnce = !continuous; break;
+            case "right": case "d": moveRight = continuous; moveRightOnce = !continuous; break;
+            case "jump": case "space": moveJump = continuous; moveJumpOnce = !continuous; break;
+            case "sneak": case "shift": moveSneak = continuous; moveSneakOnce = !continuous; break;
             case "stop": stopAllMove(); break;
+            default:
+                valid = false;
+                break;
         }
-        CommandDispatcher.addFeedback("§a移动动作: " + dir + (continuous ? " (持续)" : " (单次)"));
+        if (valid) {
+            if (!action.equals("stop")) {
+                CommandDispatcher.addFeedback("§a移动动作: " + action + (continuous ? " (持续)" : " (单次)"));
+            }
+        } else {
+            CommandDispatcher.addFeedback("§c未知移动动作: " + dir);
+            CommandDispatcher.addFeedback("§7可选: forward(w), back(s), left(a), right(d), jump, sneak, stop");
+        }
     }
 
     private static void stopAllMove() {
@@ -126,6 +138,7 @@ public class AutomationManager {
             releaseKeyTranslation(client, "key.jump");
             releaseKeyTranslation(client, "key.sneak");
         } catch (Exception e) {}
+        CommandDispatcher.addFeedback("§e已停止所有移动");
     }
 
     public static void stopAll() {
@@ -384,7 +397,7 @@ public class AutomationManager {
     }
 
     /**
-     * 玩家 Tick 回调
+     * 玩家 Tick 回调 (移动逻辑)
      */
     public static void onPlayerTick() {
         try {
@@ -393,52 +406,137 @@ public class AutomationManager {
             if (player == null) return;
 
             Object input = null;
+            // 策略 1: 尝试 Intermediary 字段 field_3913
             try { input = MappingHelper.getFieldValue(player, "field_3913", null); } catch (Exception ignored) {}
+            // 策略 2: 尝试 Yarn 字段 input
             if (input == null) try { input = MappingHelper.getFieldValue(player, "input", null); } catch (Exception ignored) {}
+            // 策略 3: 暴力根据类型定位
             if (input == null) input = MappingHelper.findUniqueFieldByType(player, MappingHelper.getClass("Input"));
 
             if (input != null) {
-                // 1.21.2+ 会在 input.tick() 中重置这些字段，所以我们必须在之后重新赋值
+                // 1. 结构化发现
+                MappingHelper.discoverInputStructurally(input);
+
+                // 2. 强制覆盖移动状态 (1.21.2+ 会在 input.tick() 中重置这些字段，所以我们必须在之后重新赋值)
+                // 注意：这里需要同时设置 boolean (按键状态) 和 float (移动强度)
+
+                // 处理前后移动
+                float forwardImpulse = 0.0f;
                 if (moveForward || moveForwardOnce) {
-                    setMovementField(input, "pressingForward", "field_3905", true);
-                    setMovementField(input, "movementForward", MappingHelper.map("movementForward"), 1.0f);
+                    forwardImpulse += 1.0f;
+                    setMovementFieldRobust(input, "pressingForward", "field_3905", true);
                     pressKeyTranslation(client, "key.forward");
                 }
                 if (moveBack || moveBackOnce) {
-                    setMovementField(input, "pressingBack", "field_3907", true);
-                    setMovementField(input, "movementForward", MappingHelper.map("movementForward"), -1.0f);
+                    forwardImpulse -= 1.0f;
+                    setMovementFieldRobust(input, "pressingBack", "field_3907", true);
                     pressKeyTranslation(client, "key.back");
                 }
+                if (forwardImpulse != 0.0f) {
+                    setMovementFieldRobust(input, "movementForward", "field_3901", forwardImpulse);
+                }
+
+                // 处理左右移动
+                float sidewaysImpulse = 0.0f;
                 if (moveLeft || moveLeftOnce) {
-                    setMovementField(input, "pressingLeft", MappingHelper.map("pressingLeft"), true);
-                    setMovementField(input, "movementSideways", MappingHelper.map("movementSideways"), 1.0f);
+                    sidewaysImpulse += 1.0f;
+                    setMovementFieldRobust(input, "pressingLeft", "field_3906", true);
                     pressKeyTranslation(client, "key.left");
                 }
                 if (moveRight || moveRightOnce) {
-                    setMovementField(input, "pressingRight", MappingHelper.map("pressingRight"), true);
-                    setMovementField(input, "movementSideways", MappingHelper.map("movementSideways"), -1.0f);
+                    sidewaysImpulse -= 1.0f;
+                    setMovementFieldRobust(input, "pressingRight", "field_3904", true);
                     pressKeyTranslation(client, "key.right");
                 }
+                if (sidewaysImpulse != 0.0f) {
+                    setMovementFieldRobust(input, "movementSideways", "field_3908", sidewaysImpulse);
+                }
 
+                // 处理跳跃和潜行
                 if (moveJump || moveJumpOnce) {
-                    setMovementField(input, "jumping", MappingHelper.map("jumping"), true);
+                    setMovementFieldRobust(input, "jumping", "field_3903", true);
                     pressKeyTranslation(client, "key.jump");
                 }
                 if (moveSneak || moveSneakOnce) {
-                    setMovementField(input, "sneaking", MappingHelper.map("sneaking"), true);
+                    setMovementFieldRobust(input, "sneaking", "field_3902", true);
                     pressKeyTranslation(client, "key.sneak");
                 }
+
+                // 重置单次触发标志
                 moveForwardOnce = moveBackOnce = moveLeftOnce = moveRightOnce = moveJumpOnce = moveSneakOnce = false;
             }
         } catch (Exception ignored) {}
     }
 
-    private static void setMovementField(Object input, String yarn, String intermediary, Object value) {
-        try { MappingHelper.setFieldValue(input, intermediary, value); } catch (Exception e) {
-            try { MappingHelper.setFieldValue(input, intermediary.replace("_", ""), value); } catch (Exception e2) {
-                try { MappingHelper.setFieldValue(input, yarn, value); } catch (Exception ignored) {}
+    private static void setMovementFieldRobust(Object input, String yarn, String intermediary, Object value) {
+        try {
+            // 策略 0: 优先使用结构化缓存 (最高优先级)
+            java.lang.reflect.Field cached = MappingHelper.getCachedInputField(yarn);
+            if (cached != null) {
+                if (value instanceof Boolean) cached.setBoolean(input, (Boolean) value);
+                else if (value instanceof Float) cached.setFloat(input, (Float) value);
+                return;
             }
-        }
+
+            // 策略 1: 使用 MappingHelper 映射后的名
+            String mapped = MappingHelper.map(yarn);
+            try {
+                MappingHelper.setFieldValue(input, mapped, value);
+                return;
+            } catch (Exception ignored) {}
+
+            // 策略 2: 直接尝试硬编码的 Intermediary 名 (fallback)
+            try {
+                MappingHelper.setFieldValue(input, intermediary, value);
+                return;
+            } catch (Exception ignored) {}
+
+            // 策略 3: 针对 1.21.x 特殊偏移的暴力补丁 (如果以上都失败)
+            if (value instanceof Boolean) {
+                // ... 之前的暴力逻辑
+                int index = -1;
+                switch (yarn) {
+                    case "pressingForward": index = 0; break;
+                    case "pressingBack": index = 1; break;
+                    case "pressingLeft": index = 2; break;
+                    case "pressingRight": index = 3; break;
+                    case "jumping": index = 4; break;
+                    case "sneaking": index = 5; break;
+                }
+                if (index >= 0) {
+                    int count = 0;
+                    for (java.lang.reflect.Field f : input.getClass().getDeclaredFields()) {
+                        if (f.getType() == boolean.class && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                            if (count == index) {
+                                f.setAccessible(true);
+                                f.setBoolean(input, (Boolean) value);
+                                return;
+                            }
+                            count++;
+                        }
+                    }
+                }
+            } else if (value instanceof Float) {
+                int index = -1;
+                switch (yarn) {
+                    case "movementSideways": index = 0; break;
+                    case "movementForward": index = 1; break;
+                }
+                if (index >= 0) {
+                    int count = 0;
+                    for (java.lang.reflect.Field f : input.getClass().getDeclaredFields()) {
+                        if (f.getType() == float.class && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                            if (count == index) {
+                                f.setAccessible(true);
+                                f.setFloat(input, (Float) value);
+                                return;
+                            }
+                            count++;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     private static void resetAttackCooldown(Object client) {

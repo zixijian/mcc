@@ -441,6 +441,78 @@ public class MappingHelper {
     private static Object lastPlayerMapOwner = null;
     private static java.util.Set<Integer> visited = new java.util.HashSet<>();
 
+    private static final Map<String, Field> inputFieldCache = new HashMap<>();
+
+    /**
+     * 结构化发现 Input 对象中的字段 (解决 1.21.x 偏移)
+     */
+    public static void discoverInputStructurally(Object input) {
+        if (input == null || !inputFieldCache.isEmpty()) return;
+        try {
+            Class<?> cls = input.getClass();
+            Field[] fields = cls.getDeclaredFields();
+
+            // 针对 Record 的处理
+            if (cls.isRecord()) {
+                java.lang.reflect.RecordComponent[] components = cls.getRecordComponents();
+                int boolCount = 0;
+                int floatCount = 0;
+                for (java.lang.reflect.RecordComponent rc : components) {
+                    Field f = cls.getDeclaredField(rc.getName());
+                    f.setAccessible(true);
+                    if (rc.getType() == boolean.class) {
+                        boolCount++;
+                        switch (boolCount) {
+                            case 1: inputFieldCache.put("pressingForward", f); break;
+                            case 2: inputFieldCache.put("pressingBack", f); break;
+                            case 3: inputFieldCache.put("pressingLeft", f); break;
+                            case 4: inputFieldCache.put("pressingRight", f); break;
+                            case 5: inputFieldCache.put("jumping", f); break;
+                            case 6: inputFieldCache.put("sneaking", f); break;
+                        }
+                    } else if (rc.getType() == float.class) {
+                        floatCount++;
+                        switch (floatCount) {
+                            case 1: inputFieldCache.put("movementSideways", f); break;
+                            case 2: inputFieldCache.put("movementForward", f); break;
+                        }
+                    }
+                }
+                return;
+            }
+
+            int boolCount = 0;
+            int floatCount = 0;
+            for (Field f : fields) {
+                if (Modifier.isStatic(f.getModifiers())) continue;
+                f.setAccessible(true);
+                if (f.getType() == boolean.class) {
+                    boolCount++;
+                    // 1.21.1+ 标准顺序: forward, back, left, right, jump, sneak
+                    switch (boolCount) {
+                        case 1: inputFieldCache.put("pressingForward", f); break;
+                        case 2: inputFieldCache.put("pressingBack", f); break;
+                        case 3: inputFieldCache.put("pressingLeft", f); break;
+                        case 4: inputFieldCache.put("pressingRight", f); break;
+                        case 5: inputFieldCache.put("jumping", f); break;
+                        case 6: inputFieldCache.put("sneaking", f); break;
+                    }
+                } else if (f.getType() == float.class) {
+                    floatCount++;
+                    // 1.21.1+ 标准顺序: movementSideways, movementForward
+                    switch (floatCount) {
+                        case 1: inputFieldCache.put("movementSideways", f); break;
+                        case 2: inputFieldCache.put("movementForward", f); break;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static Field getCachedInputField(String name) {
+        return inputFieldCache.get(name);
+    }
+
     public static Map<?, ?> findPlayerMapFingerprint(Object nh) {
         if (nh == null) return null;
         if (nh == lastPlayerMapOwner && cachedPlayerMap != null) return cachedPlayerMap;
