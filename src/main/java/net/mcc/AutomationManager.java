@@ -417,55 +417,60 @@ public class AutomationManager {
                 // 1. 结构化发现
                 MappingHelper.discoverInputStructurally(input);
 
-                // 2. 强制覆盖移动状态 (1.21.2+ 会在 input.tick() 中重置这些字段，所以我们必须在之后重新赋值)
-                // 注意：这里需要同时设置 boolean (按键状态) 和 float (移动强度)
+                boolean isRecord = input.getClass().isRecord();
 
-                // 处理前后移动
+                boolean fwd = moveForward || moveForwardOnce;
+                boolean bck = moveBack || moveBackOnce;
+                boolean lft = moveLeft || moveLeftOnce;
+                boolean rgt = moveRight || moveRightOnce;
+                boolean jmp = moveJump || moveJumpOnce;
+                boolean snk = moveSneak || moveSneakOnce;
+
                 float forwardImpulse = 0.0f;
-                if (moveForward || moveForwardOnce) {
-                    forwardImpulse += 1.0f;
-                    setMovementFieldRobust(input, "pressingForward", "field_3905", true);
-                    pressKeyTranslation(client, "key.forward");
-                }
-                if (moveBack || moveBackOnce) {
-                    forwardImpulse -= 1.0f;
-                    setMovementFieldRobust(input, "pressingBack", "field_3907", true);
-                    pressKeyTranslation(client, "key.back");
-                }
-                if (forwardImpulse != 0.0f) {
-                    setMovementFieldRobust(input, "movementForward", "field_3901", forwardImpulse);
-                }
+                if (fwd) forwardImpulse += 1.0f;
+                if (bck) forwardImpulse -= 1.0f;
 
-                // 处理左右移动
                 float sidewaysImpulse = 0.0f;
-                if (moveLeft || moveLeftOnce) {
-                    sidewaysImpulse += 1.0f;
-                    setMovementFieldRobust(input, "pressingLeft", "field_3906", true);
-                    pressKeyTranslation(client, "key.left");
-                }
-                if (moveRight || moveRightOnce) {
-                    sidewaysImpulse -= 1.0f;
-                    setMovementFieldRobust(input, "pressingRight", "field_3904", true);
-                    pressKeyTranslation(client, "key.right");
-                }
-                if (sidewaysImpulse != 0.0f) {
-                    setMovementFieldRobust(input, "movementSideways", "field_3908", sidewaysImpulse);
+                if (lft) sidewaysImpulse += 1.0f;
+                if (rgt) sidewaysImpulse -= 1.0f;
+
+                if (isRecord) {
+                    // 1.21.2+ Input 是 Record，必须创建新实例并替换
+                    try {
+                        java.lang.reflect.Constructor<?> ctor = input.getClass().getConstructors()[0];
+                        Object newInput = ctor.newInstance(fwd, bck, lft, rgt, jmp, snk, forwardImpulse, sidewaysImpulse);
+                        MappingHelper.setFieldValue(player, "field_3913", newInput);
+                    } catch (Exception e) {
+                        // Fallback: 尝试通过字段名设置 (虽然 Record 字段是 final 的，但可以通过反射强制设置)
+                        applyMovement(input, fwd, bck, lft, rgt, jmp, snk, forwardImpulse, sidewaysImpulse);
+                    }
+                } else {
+                    applyMovement(input, fwd, bck, lft, rgt, jmp, snk, forwardImpulse, sidewaysImpulse);
                 }
 
-                // 处理跳跃和潜行
-                if (moveJump || moveJumpOnce) {
-                    setMovementFieldRobust(input, "jumping", "field_3903", true);
-                    pressKeyTranslation(client, "key.jump");
-                }
-                if (moveSneak || moveSneakOnce) {
-                    setMovementFieldRobust(input, "sneaking", "field_3902", true);
-                    pressKeyTranslation(client, "key.sneak");
-                }
+                // 按键模拟反馈
+                if (fwd) pressKeyTranslation(client, "key.forward");
+                if (bck) pressKeyTranslation(client, "key.back");
+                if (lft) pressKeyTranslation(client, "key.left");
+                if (rgt) pressKeyTranslation(client, "key.right");
+                if (jmp) pressKeyTranslation(client, "key.jump");
+                if (snk) pressKeyTranslation(client, "key.sneak");
 
                 // 重置单次触发标志
                 moveForwardOnce = moveBackOnce = moveLeftOnce = moveRightOnce = moveJumpOnce = moveSneakOnce = false;
             }
         } catch (Exception ignored) {}
+    }
+
+    private static void applyMovement(Object input, boolean fwd, boolean bck, boolean lft, boolean rgt, boolean jmp, boolean snk, float fwdImp, float sidImp) {
+        setMovementFieldRobust(input, "pressingForward", "field_3905", fwd);
+        setMovementFieldRobust(input, "pressingBack", "field_3907", bck);
+        setMovementFieldRobust(input, "pressingLeft", "field_3906", lft);
+        setMovementFieldRobust(input, "pressingRight", "field_3904", rgt);
+        setMovementFieldRobust(input, "jumping", "field_3903", jmp);
+        setMovementFieldRobust(input, "sneaking", "field_3902", snk);
+        setMovementFieldRobust(input, "movementForward", "field_3901", fwdImp);
+        setMovementFieldRobust(input, "movementSideways", "field_3908", sidImp);
     }
 
     private static void setMovementFieldRobust(Object input, String yarn, String intermediary, Object value) {

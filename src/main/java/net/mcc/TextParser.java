@@ -77,7 +77,7 @@ public class TextParser {
         }
     }
 
-    private static Object createLiteral(String text) {
+    public static Object createLiteral(String text) {
         try {
             Class<?> textClass = MappingHelper.getClass("Text");
             return MappingHelper.invokeStaticMethod(textClass, "literal", text);

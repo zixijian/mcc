@@ -71,7 +71,7 @@ public class MappingHelper {
         MAPPINGS.put("selectedSlot", "field_7545");
         MAPPINGS.put("currentScreen", is1214 ? "field_1757" : "field_1755");
         MAPPINGS.put("main", "field_7547");
-        MAPPINGS.put("input", is1214 ? "field_3913" : "field_3913"); // Both seem to be field_3913, but keep it for clarity
+        MAPPINGS.put("input", "field_3913");
         MAPPINGS.put("attackKey", "field_1904");
         MAPPINGS.put("useKey", "field_1886");
         MAPPINGS.put("forwardKey", "field_1903");
@@ -88,8 +88,8 @@ public class MappingHelper {
         MAPPINGS.put("jumping", is1214 ? "field_3906" : "field_3903");
         MAPPINGS.put("sneaking", is1214 ? "field_3908" : "field_3902");
         MAPPINGS.put("gameProfile", "field_3944");
-        MAPPINGS.put("movementForward", is1214 ? "field_3913" : "field_3901");
-        MAPPINGS.put("movementSideways", is1214 ? "field_3912" : "field_3908");
+        MAPPINGS.put("movementForward", is1214 ? "field_54949" : "field_3901");
+        MAPPINGS.put("movementSideways", is1214 ? "field_54948" : "field_3908");
         MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
         MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
         MAPPINGS.put("ITEM", "field_41175");
@@ -473,8 +473,8 @@ public class MappingHelper {
                     } else if (rc.getType() == float.class) {
                         floatCount++;
                         switch (floatCount) {
-                            case 1: inputFieldCache.put("movementSideways", f); break;
-                            case 2: inputFieldCache.put("movementForward", f); break;
+                            case 1: inputFieldCache.put("movementForward", f); break;
+                            case 2: inputFieldCache.put("movementSideways", f); break;
                         }
                     }
                 }
@@ -499,10 +499,10 @@ public class MappingHelper {
                     }
                 } else if (f.getType() == float.class) {
                     floatCount++;
-                    // 1.21.1+ 标准顺序: movementSideways, movementForward
+                    // 1.21.1+ 标准顺序: movementForward, movementSideways
                     switch (floatCount) {
-                        case 1: inputFieldCache.put("movementSideways", f); break;
-                        case 2: inputFieldCache.put("movementForward", f); break;
+                        case 1: inputFieldCache.put("movementForward", f); break;
+                        case 2: inputFieldCache.put("movementSideways", f); break;
                     }
                 }
             }

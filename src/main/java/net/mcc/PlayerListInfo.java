@@ -263,15 +263,22 @@ public class PlayerListInfo {
         if (colorObj == null) return false;
         String str = colorObj.toString().toUpperCase();
         // 检查名称 (YELLOW/GOLD) 或其 Intermediary 名 (field_1068=YELLOW, field_1054=GOLD)
-        if (str.contains("YELLOW") || str.contains("GOLD") || str.contains("field_1068") || str.contains("field_1054")) return true;
+        if (str.contains("YELLOW") || str.contains("GOLD") || str.contains("field_1068") || str.contains("field_1054") || str.contains("EAAAAA")) return true;
 
         try {
             // 尝试获取 RGB 值对比
-            Object rgbVal = MappingHelper.invokeMethod(colorObj, "getRgb");
+            Object rgbVal = null;
+            try {
+                rgbVal = MappingHelper.invokeMethod(colorObj, "getRgb");
+            } catch (Exception e) {
+                // 1.21.x 有时直接是 int
+                if (colorObj instanceof Number) rgbVal = colorObj;
+            }
+
             if (rgbVal instanceof Number) {
                 int rgb = ((Number) rgbVal).intValue();
                 // 16777045 = 0xFFFF55 (Yellow), 16755200 = 0xFFAA00 (Gold)
-                return rgb == 16777045 || rgb == 16755200;
+                return rgb == 16777045 || rgb == 16755200 || (rgb & 0xFFFFFF) == 0xFFFF55 || (rgb & 0xFFFFFF) == 0xFFAA00;
             }
         } catch (Exception ignored) {}
         return false;

@@ -366,7 +366,7 @@ public class CommandDispatcher {
             Object player = getClientPlayer();
             if (player == null) return;
 
-            Object text = TextParser.parse(msg);
+            Object text = (currentChannel == OutputChannel.CHAT_COLOR) ? TextParser.createLiteral(msg) : TextParser.parse(msg);
             if (text != null) {
                 try {
                     MappingHelper.invokeMethod(player, "sendMessage", text, false);
