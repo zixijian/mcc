@@ -133,8 +133,9 @@ public class CommandDispatcher {
 
         long timeOfDay = -1;
 
-        // 策略 0: 尝试从 PerformanceMonitor 获取最近拦截的游戏时间 (最高优先级，因为它是直接从包里拿的)
-        timeOfDay = PerformanceMonitor.getLastGameTime();
+        // 策略 0: 尝试从 PerformanceMonitor 获取最近拦截的 DayTime (最高优先级)
+        timeOfDay = PerformanceMonitor.getLastDayTime();
+        if (timeOfDay != -1) timeOfDay = Math.abs(timeOfDay);
 
         if (world == null && timeOfDay == -1) {
             addFeedback("§c无法获取 World 对象且无缓存时间");

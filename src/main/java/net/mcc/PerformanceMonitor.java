@@ -11,13 +11,18 @@ public class PerformanceMonitor {
     private static int count = 0;
 
     private static long lastGameTime = -1;
+    private static long lastDayTime = -1;
     private static long lastRealTime = -1;
 
     public static long getLastGameTime() {
         return lastGameTime;
     }
 
-    public static synchronized void onWorldTimeUpdate(long gameTime) {
+    public static long getLastDayTime() {
+        return lastDayTime;
+    }
+
+    public static synchronized void onWorldTimeUpdate(long gameTime, long dayTime) {
         long now = System.currentTimeMillis();
         if (lastGameTime != -1) {
             long deltaGame = gameTime - lastGameTime;
@@ -31,6 +36,7 @@ public class PerformanceMonitor {
             }
         }
         lastGameTime = gameTime;
+        lastDayTime = dayTime;
         lastRealTime = now;
     }
 
