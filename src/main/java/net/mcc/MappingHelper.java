@@ -97,7 +97,7 @@ public class MappingHelper {
         MAPPINGS.put("getTimeOfDay", "method_8510");
         MAPPINGS.put("getTime", "method_11871");
         MAPPINGS.put("gameTime", is1214 ? "comp_2190" : "method_11871");
-        MAPPINGS.put("dayTime", is1214 ? "comp_2191" : "method_8510");
+        MAPPINGS.put("dayTime", is1214 ? "comp_2191" : "method_11870");
         MAPPINGS.put("keysById", "field_1655"); // KeyBinding.keysById
         MAPPINGS.put("translationKey", "field_1654"); // KeyBinding.translationKey
         MAPPINGS.put("literal", "method_43471");

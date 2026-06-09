@@ -131,85 +131,41 @@ public class CommandDispatcher {
         LocalDateTime now = LocalDateTime.now(ZoneId.of("GMT+8"));
         Object world = getClientWorld();
 
-        long timeOfDay = -1;
+        long gameTime = PerformanceMonitor.getLastGameTime();
+        long dayTime = PerformanceMonitor.getLastDayTime();
 
-        // 策略 0: 尝试从 PerformanceMonitor 获取最近拦截的 DayTime (最高优先级)
-        timeOfDay = PerformanceMonitor.getLastDayTime();
-        if (timeOfDay != -1) timeOfDay = Math.abs(timeOfDay);
+        // 策略 1: 如果缓存失效，尝试从 world 对象获取 (DayTime)
+        if (dayTime == -1 && world != null) {
+            String[] methods = {"getTimeOfDay", "getTime", "method_8510", "method_11871", "method_145", "method_144"};
+            for (String m : methods) {
+                try {
+                    Object res = MappingHelper.invokeMethod(world, m);
+                    if (res instanceof Number && ((Number)res).longValue() >= 0) {
+                        dayTime = ((Number)res).longValue(); break;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
 
-        if (world == null && timeOfDay == -1) {
-            addFeedback("§c无法获取 World 对象且无缓存时间");
+        if (dayTime == -1) {
+            addFeedback("§c无法获取游戏时间");
             return;
         }
 
-        // 策略 1: 尝试各种已知的时间获取方法
-        String[] methods = {"getTimeOfDay", "getTime", "method_8510", "method_11871", "method_145", "method_144"};
-        for (String m : methods) {
-            try {
-                Object res = MappingHelper.invokeMethod(world, m);
-                if (res instanceof Number) {
-                    timeOfDay = ((Number)res).longValue();
-                    if (timeOfDay >= 0) break;
-                }
-            } catch (Exception ignored) {}
-        }
+        long absoluteDayTime = Math.abs(dayTime);
+        // 优先使用 gameTime 计算主天数以匹配服务器 /server 显示
+        long mainDay = (gameTime != -1) ? (gameTime / 24000) : (absoluteDayTime / 24000);
+        long cycleDay = absoluteDayTime / 24000;
 
-        // 策略 1.5: 尝试获取属性对象的世界时间 (1.21.1 适配)
-        if (timeOfDay == -1) {
-            try {
-                Object props = MappingHelper.invokeMethod(world, "method_8503"); // getLevelProperties
-                if (props != null) {
-                    try { timeOfDay = ((Number) MappingHelper.invokeMethod(props, "getTimeOfDay")).longValue(); } catch (Exception ignored) {}
-                }
-            } catch (Exception ignored) {}
-        }
+        long hh = (absoluteDayTime % 24000) / 1000 + 6;
+        if (hh >= 24) hh -= 24;
+        long mm = (absoluteDayTime % 1000) * 60 / 1000;
 
-        // 策略 2: 深度扫描 World 及其子属性
-        if (timeOfDay == -1) {
-            try {
-                Class<?> curr = world.getClass();
-                while (curr != null && curr != Object.class) {
-                    for (java.lang.reflect.Field f : curr.getDeclaredFields()) {
-                        try {
-                            f.setAccessible(true);
-                            Object val = f.get(world);
-                            if (val == null) continue;
-
-                            // 如果是 long 字段
-                            if (f.getType() == long.class) {
-                                long lv = f.getLong(world);
-                                if (lv > 10000) { timeOfDay = lv; break; }
-                            }
-
-                            // 如果是属性对象，尝试其方法
-                            if (val.getClass().getName().contains("Properties") || val.getClass().getName().contains("class_31")) {
-                                for (String m : methods) {
-                                    try {
-                                        Object res = MappingHelper.invokeMethod(val, m);
-                                        if (res instanceof Number && ((Number)res).longValue() > 0) {
-                                            timeOfDay = ((Number)res).longValue(); break;
-                                        }
-                                    } catch (Exception ignored) {}
-                                }
-                            }
-                        } catch (Exception ignored) {}
-                        if (timeOfDay != -1) break;
-                    }
-                    if (timeOfDay != -1) break;
-                    curr = curr.getSuperclass();
-                }
-            } catch (Exception ignored) {}
-        }
-
-        if (timeOfDay != -1) {
-            long day = timeOfDay / 24000;
-            long hh = (timeOfDay % 24000) / 1000 + 6;
-            if (hh >= 24) hh -= 24;
-            long mm = (timeOfDay % 1000) * 60 / 1000;
-            addFeedback(String.format("§e现实时间: %s", now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
-            addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", day, hh, mm));
+        addFeedback(String.format("§e现实时间: %s", now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
+        if (gameTime != -1 && mainDay != cycleDay) {
+            addFeedback(String.format("§6游戏时间: Day %d (%d), %02d:%02d", mainDay, cycleDay, hh, mm));
         } else {
-            addFeedback("§c无法获取游戏时间");
+            addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", mainDay, hh, mm));
         }
     }
 
