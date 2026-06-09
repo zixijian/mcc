@@ -102,14 +102,6 @@ public class CommandDispatcher {
                         AutomationManager.showLook();
                     }
                     break;
-                case "move":
-                    if (parts.length > 2) {
-                        AutomationManager.setMove(parts[2], parts.length > 3 && parts[3].equals("0"));
-                    } else {
-                        addFeedback("§b/mcc move <forward|back|left|right|jump|sneak|stop> [0]");
-                        addFeedback("§7(0 表示持续执行，不加 0 表示单次执行)");
-                    }
-                    break;
                 case "status": AutomationManager.showStatus(); break;
                 case "stop": AutomationManager.stopAll(); break;
                 case "debug":
@@ -131,7 +123,7 @@ public class CommandDispatcher {
         addFeedback("§f/mcc time | list | hp | xp | tps");
         addFeedback("§f/mcc choose/cs <slot> | slot [slot] | tools | drop [slot|all]");
         addFeedback("§f/mcc attack/atk [freq] | use [freq] | respawn");
-        addFeedback("§f/mcc look <pitch> <yaw> | move <dir> [0]");
+        addFeedback("§f/mcc look <pitch> <yaw>");
         addFeedback("§f/mcc status | stop | tune <1-4>");
     }
 
