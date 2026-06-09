@@ -153,20 +153,14 @@ public class CommandDispatcher {
         }
 
         long absoluteDayTime = Math.abs(dayTime);
-        // 优先使用 gameTime 计算主天数以匹配服务器 /server 显示
-        long mainDay = (gameTime != -1) ? (gameTime / 24000) : (absoluteDayTime / 24000);
-        long cycleDay = absoluteDayTime / 24000;
+        long day = absoluteDayTime / 24000;
 
         long hh = (absoluteDayTime % 24000) / 1000 + 6;
         if (hh >= 24) hh -= 24;
         long mm = (absoluteDayTime % 1000) * 60 / 1000;
 
         addFeedback(String.format("§e现实时间: %s", now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
-        if (gameTime != -1 && mainDay != cycleDay) {
-            addFeedback(String.format("§6游戏时间: Day %d (%d), %02d:%02d", mainDay, cycleDay, hh, mm));
-        } else {
-            addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", mainDay, hh, mm));
-        }
+        addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", day, hh, mm));
     }
 
     private static void showHP() throws Exception {
