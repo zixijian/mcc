@@ -60,59 +60,14 @@ public class PlayerListInfo {
                 if (name == null) continue;
 
                 boolean isMe = name.equalsIgnoreCase(selfName);
-                boolean isYellow = false;
-
-                // 探测黄名 (1.21.x 架构优化)
-                try {
-                    Object displayText = MappingHelper.invokeMethod(entry, "getDisplayName");
-                    if (displayText != null) {
-                        // 策略 0: 检查 Style 的颜色
-                        Object style = MappingHelper.invokeMethod(displayText, "getStyle");
-                        if (style != null) {
-                            Object color = MappingHelper.invokeMethod(style, "getColor");
-                            if (color != null) {
-                                isYellow = isYellowColor(color);
-                            }
-                        }
-
-                        if (!isYellow) {
-                            // 策略 1: 检查 getString() 中是否包含 § 颜色代码
-                            String rawStr = (String) MappingHelper.invokeMethod(displayText, "getString");
-                            if (rawStr != null && (rawStr.contains("§e") || rawStr.contains("§6"))) {
-                                isYellow = true;
-                            }
-                        }
-
-                        if (!isYellow) {
-                            // 策略 2: 检查 toString()
-                            String textDesc = displayText.toString().toLowerCase();
-                            if (textDesc.contains("yellow") || textDesc.contains("gold") || textDesc.contains("§e") || textDesc.contains("§6")) {
-                                isYellow = true;
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {}
-
-                if (!isYellow) {
-                    try {
-                        Object team = MappingHelper.invokeMethod(entry, "getScoreboardTeam");
-                        if (team != null) {
-                            Object color = MappingHelper.invokeMethod(team, "getColor");
-                            if (color != null) {
-                                isYellow = isYellowColor(color);
-                            }
-                        }
-                    } catch (Exception ignored) {}
-                }
-
-                sorted.add(new EntryProxy(name, isYellow, isMe));
+                sorted.add(new EntryProxy(name, isMe));
             } catch (Exception ignored) {}
         }
 
-        // 严格排序逻辑：[本人(0)] > [黄名(1)] > [普通(2)]，组内字母序
+        // 严格排序逻辑：[本人(0)] > [普通(1)]，组内字母序
         Collections.sort(sorted, (a, b) -> {
-            int pa = a.isMe ? 0 : (a.isYellow ? 1 : 2);
-            int pb = b.isMe ? 0 : (b.isYellow ? 1 : 2);
+            int pa = a.isMe ? 0 : 1;
+            int pb = b.isMe ? 0 : 1;
             if (pa != pb) return pa - pb;
             return a.rawName.compareToIgnoreCase(b.rawName);
         });
@@ -124,9 +79,6 @@ public class PlayerListInfo {
                 // 本人账号：白底（白括号）、红字、加粗 [[Name]]
                 // 使用 §r 确保从干净状态开始，§f 设定括号颜色，§c§l 设定名字
                 sb.append("§r§f[[§c§l").append(p.rawName).append("§r§f]]");
-            } else if (p.isYellow) {
-                // 黄名玩家：§e
-                sb.append("§r§e").append(p.rawName);
             } else {
                 // 普通玩家：§f (强制白色，防止继承)
                 sb.append("§r§f").append(p.rawName);
@@ -259,36 +211,11 @@ public class PlayerListInfo {
         return null;
     }
 
-    private static boolean isYellowColor(Object colorObj) {
-        if (colorObj == null) return false;
-        String str = colorObj.toString().toUpperCase();
-        // 检查名称 (YELLOW/GOLD) 或其 Intermediary 名 (field_1068=YELLOW, field_1054=GOLD)
-        if (str.contains("YELLOW") || str.contains("GOLD") || str.contains("field_1068") || str.contains("field_1054") || str.contains("EAAAAA")) return true;
-
-        try {
-            // 尝试获取 RGB 值对比
-            Object rgbVal = null;
-            try {
-                rgbVal = MappingHelper.invokeMethod(colorObj, "getRgb");
-            } catch (Exception e) {
-                // 1.21.x 有时直接是 int
-                if (colorObj instanceof Number) rgbVal = colorObj;
-            }
-
-            if (rgbVal instanceof Number) {
-                int rgb = ((Number) rgbVal).intValue();
-                // 16777045 = 0xFFFF55 (Yellow), 16755200 = 0xFFAA00 (Gold)
-                return rgb == 16777045 || rgb == 16755200 || (rgb & 0xFFFFFF) == 0xFFFF55 || (rgb & 0xFFFFFF) == 0xFFAA00;
-            }
-        } catch (Exception ignored) {}
-        return false;
-    }
-
     private static class EntryProxy {
         final String rawName;
-        final boolean isYellow, isMe;
-        EntryProxy(String n, boolean y, boolean m) {
-            this.rawName = n; this.isYellow = y; this.isMe = m;
+        final boolean isMe;
+        EntryProxy(String n, boolean m) {
+            this.rawName = n; this.isMe = m;
         }
     }
 }

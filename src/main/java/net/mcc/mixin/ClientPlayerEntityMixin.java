@@ -27,30 +27,6 @@ public class ClientPlayerEntityMixin {
         AutomationManager.onClientTick();
     }
 
-    // tickMovement (1.21.x) - method_3140 在某些版本返回 void
-    @Inject(method = "method_3140()V", at = @At("TAIL"), remap = false, require = 0)
-    private void onTickMovementPostVoid(CallbackInfo ci) {
-        AutomationManager.onPlayerTick();
-    }
-
-    // tickMovement (1.21.x) - method_3140 在某些版本返回 boolean
-    @Inject(method = "method_3140()Z", at = @At("TAIL"), remap = false, require = 0)
-    private void onTickMovementPostReturnable(CallbackInfoReturnable<Boolean> cir) {
-        AutomationManager.onPlayerTick();
-    }
-
-    // 针对 1.21.2+ 的 Input.tick() 注入
-    // 1.21.1: method_3129()V
-    @Inject(method = "method_3140", at = @At(value = "INVOKE", target = "Lnet/minecraft/class_744;method_3129()V", shift = At.Shift.AFTER), remap = false, require = 0)
-    private void onInputTickPost(CallbackInfo ci) {
-        AutomationManager.onPlayerTick();
-    }
-
-    // 1.21.2+: method_3129(ZF)V
-    @Inject(method = "method_3140", at = @At(value = "INVOKE", target = "Lnet/minecraft/class_744;method_3129(ZF)V", shift = At.Shift.AFTER), remap = false, require = 0)
-    private void onInputTickPostNew(CallbackInfo ci) {
-        AutomationManager.onPlayerTick();
-    }
 
     // 1.21.1 sendCommand (返回 boolean)
     @Inject(method = "method_3111(Ljava/lang/String;)Z", at = @At("HEAD"), cancellable = true, remap = false, require = 0)

@@ -18,23 +18,33 @@ public class ClientPlayNetworkHandlerMixin {
     @Inject(method = "method_11079", at = @At("HEAD"), remap = false, require = 0)
     private void onWorldTimeUpdate(@Coerce Object packet, CallbackInfo ci) {
         try {
-            long worldTime = -1;
+            long gameTime = -1;
+            long dayTime = -1;
             // 策略 1: 属性读取 (Record or Class)
-            try { worldTime = ((Number) MappingHelper.invokeMethod(packet, "gameTime")).longValue(); } catch (Exception ignored) {}
-            if (worldTime == -1) {
-                try { worldTime = ((Number) MappingHelper.invokeMethod(packet, "getTime")).longValue(); } catch (Exception ignored) {}
+            try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "gameTime")).longValue(); } catch (Exception ignored) {}
+            try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "dayTime")).longValue(); } catch (Exception ignored) {}
+
+            if (gameTime == -1) {
+                try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "method_11871")).longValue(); } catch (Exception ignored) {}
             }
-            // 策略 2: 暴力查找第一个 long 字段
-            if (worldTime == -1) {
+            if (dayTime == -1) {
+                try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "method_11870")).longValue(); } catch (Exception ignored) {}
+            }
+
+            // 策略 2: 暴力查找 long 字段 (WorldTimeUpdateS2CPacket 通常有两个 long 字段)
+            if (gameTime == -1 || dayTime == -1) {
+                int count = 0;
                 for (java.lang.reflect.Field f : packet.getClass().getDeclaredFields()) {
                     if (f.getType() == long.class) {
                         f.setAccessible(true);
-                        worldTime = f.getLong(packet);
-                        break;
+                        long val = f.getLong(packet);
+                        if (count == 0) gameTime = val;
+                        else if (count == 1) dayTime = val;
+                        count++;
                     }
                 }
             }
-            if (worldTime != -1) PerformanceMonitor.onWorldTimeUpdate(worldTime);
+            if (gameTime != -1) PerformanceMonitor.onWorldTimeUpdate(gameTime, dayTime != -1 ? dayTime : gameTime);
         } catch (Exception e) {}
     }
 
