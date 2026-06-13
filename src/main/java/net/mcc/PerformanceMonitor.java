@@ -56,8 +56,8 @@ public class PerformanceMonitor {
         double tps = Math.min(20.0, (totalTicks * 1000.0) / totalReal);
         double mspt = (double) totalReal / totalTicks;
 
-        String tpsColor = tps >= 18 ? "§a" : (tps >= 15 ? "§e" : "§c");
-        String msptColor = mspt <= 40 ? "§a" : (mspt <= 50 ? "§e" : "§c");
+        String tpsColor = tps > 15 ? "§a" : (tps > 10 ? "§e" : "§c");
+        String msptColor = mspt <= 50 ? "§a" : (mspt <= 55 ? "§e" : "§c");
 
         CommandDispatcher.addFeedback(String.format("§fTPS: %s%.2f §r§fMSPT: %s%.2f", tpsColor, tps, msptColor, mspt));
     }

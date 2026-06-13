@@ -7,6 +7,9 @@ public class AutomationManager {
     private static int useTimer = 0;
     private static boolean attackOnce = false;
     private static boolean useOnce = false;
+    private static boolean eatingMode = false;
+    private static Object eatingItem = null;
+    private static int eatingInitialCount = -1;
     private static boolean autoRespawn = false;
 
 
@@ -40,6 +43,50 @@ public class AutomationManager {
 
     public static void setUse(int freq, boolean hasArgs) {
         if (!hasArgs) {
+            try {
+                Object player = CommandDispatcher.getClientPlayer();
+                if (player != null) {
+                    Object stack = MappingHelper.invokeMethod(player, "getMainHandStack");
+                    if (stack != null) {
+                        Object item = MappingHelper.invokeMethod(stack, "getItem");
+                        if (item != null) {
+                            boolean isFood = false;
+                            try { isFood = (boolean) MappingHelper.invokeMethod(item, "isFood"); } catch (Exception ignored) {}
+
+                            String itemName = item.getClass().getName().toLowerCase();
+                            boolean isPotion = itemName.contains("potion") || itemName.contains("class_1842");
+                            boolean isSplash = false;
+
+                            // 检查是否是喷溅/滞留药水 (Splash/Lingering)
+                            // 简单判断逻辑：如果名字包含 splash 或 lingering
+                            if (isPotion) {
+                                String registryName = "";
+                                try {
+                                    Object id = MappingHelper.invokeMethod(MappingHelper.getRegistry("ITEM"), "getId", item);
+                                    registryName = id.toString();
+                                } catch (Exception ignored) {}
+                                if (registryName.contains("splash") || registryName.contains("lingering")) {
+                                    isSplash = true;
+                                }
+                            }
+
+                            if ((isFood || isPotion) && !isSplash) {
+                                eatingMode = true;
+                                eatingItem = stack;
+                                try {
+                                    eatingInitialCount = ((Number) MappingHelper.invokeMethod(stack, "getCount")).intValue();
+                                } catch (Exception e) { eatingInitialCount = -1; }
+                                useFreq = -1;
+                                attackFreq = -1;
+                                CommandDispatcher.addFeedback("§a进入进食/饮用模式");
+                                return;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("[MCC] Use detection failed: " + e);
+            }
             useOnce = true;
             useTimer = 0; // 重置计时器
             CommandDispatcher.addFeedback("§a执行使用一次");
@@ -97,7 +144,8 @@ public class AutomationManager {
 
     public static void stopAll() {
         attackFreq = -1; useFreq = -1;
-        attackOnce = useOnce = false;
+        attackOnce = useOnce = eatingMode = false;
+        eatingItem = null;
         lockedPitch = lockedYaw = null;
         try {
             Object client = CommandDispatcher.getClient();
@@ -219,7 +267,50 @@ public class AutomationManager {
             }
 
             // 3. 使用逻辑
-            if (useOnce) {
+            if (eatingMode) {
+                Object currentStack = MappingHelper.invokeMethod(player, "getMainHandStack");
+                boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+
+                boolean finished = false;
+                if (currentStack == null) {
+                    finished = true;
+                } else {
+                    try {
+                        if ((boolean) MappingHelper.invokeMethod(currentStack, "isEmpty")) {
+                            finished = true;
+                        } else {
+                            int currentCount = ((Number) MappingHelper.invokeMethod(currentStack, "getCount")).intValue();
+                            if (currentCount < eatingInitialCount) {
+                                finished = true; // 数量减少了，说明吃掉了一个
+                            } else {
+                                // 检查物品类型是否改变（针对药水变瓶子，或者某些特殊物品）
+                                Object oldItem = MappingHelper.invokeMethod(eatingItem, "getItem");
+                                Object newItem = MappingHelper.invokeMethod(currentStack, "getItem");
+                                if (oldItem != newItem) {
+                                    finished = true;
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        // 如果出错，且不再使用了，也认为结束了
+                        if (!isUsing) finished = true;
+                    }
+                }
+
+                if (finished) {
+                    eatingMode = false;
+                    eatingItem = null;
+                    eatingInitialCount = -1;
+                    releaseKeyTranslation(client, "key.use");
+                    CommandDispatcher.addFeedback("§a动作完成");
+                    return;
+                }
+
+                pressKeyTranslation(client, "key.use");
+                if (!isUsing) {
+                    triggerItemUse(client, player);
+                }
+            } else if (useOnce) {
                 resetUseCooldown(client);
                 incrementKeyCounter(client, "key.use");
                 triggerItemUse(client, player);
