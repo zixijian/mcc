@@ -273,7 +273,8 @@ public class AutomationManager {
             // 3. 使用逻辑
             if (eatingMode) {
                 Object currentStack = MappingHelper.invokeMethod(player, "getMainHandStack");
-                boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+                boolean isUsing = false;
+                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
 
                 boolean finished = false;
                 if (currentStack == null) {
@@ -316,7 +317,9 @@ public class AutomationManager {
                 }
             } else if (useOnce) {
                 resetUseCooldown(client);
+                // 核心：对于即时物品（烟花、火箭），直接自增按键计数器并让 Minecraft 逻辑处理最稳健
                 incrementKeyCounter(client, "key.use");
+                // 同时尝试手动触发一次，以防计数器在某些版本失效
                 triggerItemUse(client, player);
                 useOnce = false;
             } else if (useFreq == 0) {
@@ -391,19 +394,47 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            // 1. 核心逻辑：直接使用 MinecraftClient.doItemUse()
-            // 这是最标准的方法，能正确处理方块交互、烟花、工具和进食逻辑
-            String[] methods = {"method_1531", "method1531", "doItemUse"};
-            for (String m : methods) {
-                try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
+            Class<?> handClass = MappingHelper.getClass("Hand");
+            Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
+            if (mainHand == null) return;
+
+            Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
+            Object item = (stack != null) ? MappingHelper.invokeMethod(stack, "getItem") : null;
+            String registryName = "";
+            if (item != null) {
+                try {
+                    Object id = MappingHelper.invokeMethod(MappingHelper.getRegistry("ITEM"), "getId", item);
+                    registryName = id.toString();
+                } catch (Exception ignored) {}
             }
 
-            // 2. 显式触发挥手
+            // 1. 针对鱼竿的特殊处理：强制直接调用 interactItem 确保功能
+            if (registryName.contains("fishing_rod")) {
+                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                if (im != null) {
+                    try {
+                        MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                        return; // 鱼竿直接返回，不走通用逻辑
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            // 2. 核心逻辑：使用标准的 doItemUse()
+            // 注意：在 1.21.1 中，doItemUse() 是私有的，需要通过 MappingHelper 调用
+            String[] methods = {"method_1531", "method1531", "doItemUse"};
+            boolean success = false;
+            for (String m : methods) {
+                try {
+                    MappingHelper.invokeMethod(client, m);
+                    success = true;
+                    break;
+                } catch (Exception ignored) {}
+            }
+
+            // 3. 显式触发挥手 (如果 doItemUse 没有触发)
             try {
                 boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 if (!isUsing) {
-                    Class<?> handClass = MappingHelper.getClass("Hand");
-                    Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
                     String[] swingMethods = {"method_6104", "method6104", "swingHand"};
                     for (String m : swingMethods) {
                         try { MappingHelper.invokeMethod(player, m, mainHand); break; } catch (Exception ignored) {}
