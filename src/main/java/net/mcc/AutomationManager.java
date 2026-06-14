@@ -5,7 +5,6 @@ public class AutomationManager {
     private static int useFreq = -1;
     private static int attackTimer = 0;
     private static int useTimer = 0;
-    private static int useOnceTimer = 0;
     private static boolean attackOnce = false;
     private static boolean useOnce = false;
     private static boolean eatingMode = false;
@@ -43,14 +42,11 @@ public class AutomationManager {
     }
 
     public static void setUse(int freq, boolean hasArgs) {
-        useOnceTimer = 0; // 重置即时使用计时器
         if (!hasArgs) {
             try {
                 Object player = CommandDispatcher.getClientPlayer();
                 if (player != null) {
-                    Class<?> handClass = MappingHelper.getClass("Hand");
-                    Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-                    Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
+                    Object stack = MappingHelper.invokeMethod(player, "getMainHandStack");
                     if (stack != null) {
                         Object item = MappingHelper.invokeMethod(stack, "getItem");
                         if (item != null) {
@@ -231,12 +227,7 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
-            Object currentScreen = null;
-            try {
-                Class<?> screenClass = MappingHelper.getClass("Screen");
-                currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
-            } catch (Exception ignored) {}
+            Object currentScreen = MappingHelper.getFieldValue(client, "currentScreen", null);
             if (currentScreen != null) return;
 
             // 视角锁定
@@ -281,9 +272,7 @@ public class AutomationManager {
 
             // 3. 使用逻辑
             if (eatingMode) {
-                Class<?> handClass = MappingHelper.getClass("Hand");
-                Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-                Object currentStack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
+                Object currentStack = MappingHelper.invokeMethod(player, "getMainHandStack");
                 boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
 
                 boolean finished = false;
@@ -326,17 +315,10 @@ public class AutomationManager {
                     triggerItemUse(client, player);
                 }
             } else if (useOnce) {
-                if (useOnceTimer == 0) {
-                    resetUseCooldown(client);
-                    pressKeyTranslation(client, "key.use");
-                    triggerItemUse(client, player);
-                    useOnceTimer = 2; // 持续按住 2 ticks 确保触发
-                } else {
-                    if (--useOnceTimer <= 0) {
-                        releaseKeyTranslation(client, "key.use");
-                        useOnce = false;
-                    }
-                }
+                resetUseCooldown(client);
+                incrementKeyCounter(client, "key.use");
+                triggerItemUse(client, player);
+                useOnce = false;
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
@@ -409,46 +391,19 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            Class<?> handClass = MappingHelper.getClass("Hand");
-            Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-            if (mainHand == null) return;
-
-            // 针对特定物品（如鱼竿）直接调用 interactItem 往往更可靠，避免被方块交互拦截
-            Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
-            Object item = (stack != null) ? MappingHelper.invokeMethod(stack, "getItem") : null;
-            String registryName = "";
-            if (item != null) {
-                try {
-                    Object id = MappingHelper.invokeMethod(MappingHelper.getRegistry("ITEM"), "getId", item);
-                    registryName = id.toString();
-                } catch (Exception ignored) {}
-            }
-
-            // 1. 如果是鱼竿，优先尝试直接交互
-            if (registryName.contains("fishing_rod")) {
-                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                if (im != null) {
-                    String[] interactMethods = {"method_2919", "method_2919", "interactItem"};
-                    for (String m : interactMethods) {
-                        try {
-                            Object res = MappingHelper.invokeMethod(im, m, player, mainHand);
-                            if (res != null && res.toString().toLowerCase().contains("success")) return;
-                        } catch (Exception ignored) {}
-                    }
-                }
-            }
-
-            // 2. 核心逻辑：直接使用 MinecraftClient.doItemUse()
+            // 1. 核心逻辑：直接使用 MinecraftClient.doItemUse()
             // 这是最标准的方法，能正确处理方块交互、烟花、工具和进食逻辑
             String[] methods = {"method_1531", "method1531", "doItemUse"};
             for (String m : methods) {
                 try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
             }
 
-            // 3. 显式触发挥手
+            // 2. 显式触发挥手
             try {
                 boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 if (!isUsing) {
+                    Class<?> handClass = MappingHelper.getClass("Hand");
+                    Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
                     String[] swingMethods = {"method_6104", "method6104", "swingHand"};
                     for (String m : swingMethods) {
                         try { MappingHelper.invokeMethod(player, m, mainHand); break; } catch (Exception ignored) {}
