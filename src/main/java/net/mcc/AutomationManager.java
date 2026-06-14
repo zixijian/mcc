@@ -5,6 +5,7 @@ public class AutomationManager {
     private static int useFreq = -1;
     private static int attackTimer = 0;
     private static int useTimer = 0;
+    private static int useOnceTimer = 0;
     private static boolean attackOnce = false;
     private static boolean useOnce = false;
     private static boolean eatingMode = false;
@@ -42,6 +43,7 @@ public class AutomationManager {
     }
 
     public static void setUse(int freq, boolean hasArgs) {
+        useOnceTimer = 0;
         if (!hasArgs) {
             try {
                 Object player = CommandDispatcher.getClientPlayer();
@@ -227,7 +229,16 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            Object currentScreen = MappingHelper.getFieldValue(client, "currentScreen", null);
+            // 健壮的当前屏幕检测
+            Object currentScreen = null;
+            try {
+                currentScreen = MappingHelper.getFieldValue(client, "currentScreen", null);
+            } catch (Exception e) {
+                try {
+                    Class<?> screenClass = MappingHelper.getClass("Screen");
+                    currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
+                } catch (Exception ignored) {}
+            }
             if (currentScreen != null) return;
 
             // 视角锁定
@@ -316,12 +327,17 @@ public class AutomationManager {
                     triggerItemUse(client, player);
                 }
             } else if (useOnce) {
-                resetUseCooldown(client);
-                // 核心：对于即时物品（烟花、火箭），直接自增按键计数器并让 Minecraft 逻辑处理最稳健
-                incrementKeyCounter(client, "key.use");
-                // 同时尝试手动触发一次，以防计数器在某些版本失效
-                triggerItemUse(client, player);
-                useOnce = false;
+                if (useOnceTimer == 0) {
+                    resetUseCooldown(client);
+                    pressKeyTranslation(client, "key.use");
+                    triggerItemUse(client, player);
+                    useOnceTimer = 2; // 模拟长按 2 ticks
+                } else {
+                    if (--useOnceTimer <= 0) {
+                        releaseKeyTranslation(client, "key.use");
+                        useOnce = false;
+                    }
+                }
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
@@ -408,30 +424,36 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 1. 针对鱼竿的特殊处理：强制直接调用 interactItem 确保功能
-            if (registryName.contains("fishing_rod")) {
-                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                if (im != null) {
-                    try {
-                        MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                        return; // 鱼竿直接返回，不走通用逻辑
-                    } catch (Exception ignored) {}
-                }
-            }
+            Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+            if (im == null) return;
 
-            // 2. 核心逻辑：使用标准的 doItemUse()
-            // 注意：在 1.21.1 中，doItemUse() 是私有的，需要通过 MappingHelper 调用
-            String[] methods = {"method_1531", "method1531", "doItemUse"};
-            boolean success = false;
-            for (String m : methods) {
+            // 1. 强制直接调用 interactItem/interactBlock (绕过 doItemUse 的视线检测限制)
+            // 鱼竿、烟花火箭、工具通常可以直接通过这些方法触发，最为稳健
+            boolean acted = false;
+            try {
+                Object res = MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                if (res != null && !res.toString().toLowerCase().contains("pass")) acted = true;
+            } catch (Exception ignored) {}
+
+            if (!acted) {
                 try {
-                    MappingHelper.invokeMethod(client, m);
-                    success = true;
-                    break;
+                    Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+                    if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
+                        Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
+                        if (res != null && !res.toString().toLowerCase().contains("pass")) acted = true;
+                    }
                 } catch (Exception ignored) {}
             }
 
-            // 3. 显式触发挥手 (如果 doItemUse 没有触发)
+            // 2. Fallback: 尝试原版 doItemUse()
+            if (!acted) {
+                String[] methods = {"method_1531", "method1531", "doItemUse"};
+                for (String m : methods) {
+                    try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
+                }
+            }
+
+            // 3. 显式触发挥手 (补全视觉效果)
             try {
                 boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 if (!isUsing) {
