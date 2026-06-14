@@ -43,6 +43,7 @@ public class AutomationManager {
     }
 
     public static void setUse(int freq, boolean hasArgs) {
+        useOnceTimer = 0; // 重置即时使用计时器
         if (!hasArgs) {
             try {
                 Object player = CommandDispatcher.getClientPlayer();
@@ -408,12 +409,9 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            boolean success = false;
-            Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Class<?> handClass = MappingHelper.getClass("Hand");
             Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-
-            if (mainHand == null || im == null) return;
+            if (mainHand == null) return;
 
             // 针对特定物品（如鱼竿）直接调用 interactItem 往往更可靠，避免被方块交互拦截
             Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
@@ -426,59 +424,28 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 如果是鱼竿，优先尝试 interactItem
+            // 1. 如果是鱼竿，优先尝试直接交互
             if (registryName.contains("fishing_rod")) {
-                String[] interactMethods = {"method_2919", "method2919", "interactItem"};
-                for (String m : interactMethods) {
-                    try {
-                        Object res = MappingHelper.invokeMethod(im, m, player, mainHand);
-                        if (res != null && res.toString().toLowerCase().contains("success")) {
-                            success = true; break;
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            // 1. 针对方块交互的优化：检查 crosshairTarget
-            if (!success) {
-                Object target = null;
-                String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-                for (String f : targetFields) {
-                    try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
-                }
-
-                if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
-                    // 尝试 interactBlock (1.21.1: method_2896, 1.21.4+: method_2902)
-                    String[] blockMethods = {"method_2896", "method2896", "method_2902", "method2902", "interactBlock"};
-                    for (String m : blockMethods) {
+                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                if (im != null) {
+                    String[] interactMethods = {"method_2919", "method_2919", "interactItem"};
+                    for (String m : interactMethods) {
                         try {
-                            Object res = MappingHelper.invokeMethod(im, m, player, mainHand, target);
-                            if (res != null && !res.toString().toLowerCase().contains("fail")) { success = true; break; }
+                            Object res = MappingHelper.invokeMethod(im, m, player, mainHand);
+                            if (res != null && res.toString().toLowerCase().contains("success")) return;
                         } catch (Exception ignored) {}
                     }
                 }
             }
 
-            // 2. 尝试常规 doItemUse (MinecraftClient)
-            if (!success) {
-                String[] methods = {"method_1531", "method1531", "doItemUse"};
-                for (String m : methods) {
-                    try { MappingHelper.invokeMethod(client, m); success = true; break; } catch (Exception ignored) {}
-                }
+            // 2. 核心逻辑：直接使用 MinecraftClient.doItemUse()
+            // 这是最标准的方法，能正确处理方块交互、烟花、工具和进食逻辑
+            String[] methods = {"method_1531", "method1531", "doItemUse"};
+            for (String m : methods) {
+                try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
             }
 
-            // 3. Fallback: interactItem (InteractionManager)
-            if (!success) {
-                String[] interactMethods = {"method_2919", "method2919", "interactItem"};
-                for (String m : interactMethods) {
-                    try {
-                        Object res = MappingHelper.invokeMethod(im, m, player, mainHand);
-                        if (res != null) { success = true; break; }
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            // 4. 显式触发挥手
+            // 3. 显式触发挥手
             try {
                 boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 if (!isUsing) {
