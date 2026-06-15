@@ -46,9 +46,7 @@ public class AutomationManager {
             try {
                 Object player = CommandDispatcher.getClientPlayer();
                 if (player != null) {
-                    Class<?> handClass = MappingHelper.getClass("Hand");
-                    Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-                    Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
+                    Object stack = MappingHelper.invokeMethod(player, "getMainHandStack");
                     if (stack != null && !((boolean) MappingHelper.invokeMethod(stack, "isEmpty"))) {
                         Object item = MappingHelper.invokeMethod(stack, "getItem");
                         if (item != null) {
@@ -88,7 +86,7 @@ public class AutomationManager {
                         }
                     }
 
-                    // 立即同步触发，消除延迟。
+                    // 立即同步触发，消除延迟。不设置 useOnce，防止双重触发
                     Object client = CommandDispatcher.getClient();
                     resetUseCooldown(client);
                     triggerItemUse(client, player);
@@ -396,33 +394,34 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            Class<?> handClass = MappingHelper.getClass("Hand");
-            Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-            if (mainHand == null) return;
-
             // 强制重置冷却，确保立即触发
             resetUseCooldown(client);
 
             // 1. 核心逻辑：调用标准的 doItemUse()
             // 这是 1.21.x 最通用的交互入口，处理了视线目标（方块/实体）、火箭、工具交互和进食
             String[] methods = {"method_1531", "method1531", "doItemUse"};
-            boolean doItemUseCalled = false;
+            boolean done = false;
             for (String m : methods) {
                 try {
                     MappingHelper.invokeMethod(client, m);
-                    doItemUseCalled = true;
+                    done = true;
                     break;
                 } catch (Exception ignored) {}
             }
 
+            Class<?> handClass = MappingHelper.getClass("Hand");
+            Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
+
             // 2. 补齐视觉效果
-            try { MappingHelper.invokeMethod(player, "swingHand", mainHand); } catch (Exception ignored) {}
+            if (mainHand != null) {
+                try { MappingHelper.invokeMethod(player, "swingHand", mainHand); } catch (Exception ignored) {}
+            }
 
             // 3. 鱼竿专项兜底：如果 doItemUse 没起作用（常因视线被挡），强制直接发起交互
-            Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
-            if (stack != null) {
-                Object item = MappingHelper.invokeMethod(stack, "getItem");
-                if (item != null) {
+            if (!done && mainHand != null) {
+                Object stack = MappingHelper.invokeMethod(player, "getMainHandStack");
+                if (stack != null) {
+                    Object item = MappingHelper.invokeMethod(stack, "getItem");
                     String reg = "";
                     try { reg = MappingHelper.invokeMethod(MappingHelper.getRegistry("ITEM"), "getId", item).toString(); } catch (Exception ignored) {}
                     if (reg.contains("fishing_rod")) {
