@@ -49,7 +49,7 @@ public class AutomationManager {
                     Class<?> handClass = MappingHelper.getClass("Hand");
                     Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
                     Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
-                    if (stack != null) {
+                    if (stack != null && !((boolean) MappingHelper.invokeMethod(stack, "isEmpty"))) {
                         Object item = MappingHelper.invokeMethod(stack, "getItem");
                         if (item != null) {
                             boolean isFood = false;
@@ -78,12 +78,10 @@ public class AutomationManager {
                                 useFreq = -1;
                                 attackFreq = -1;
                                 // 立即设置按键状态并触发，消除延迟
-                                try {
-                                    Object client = CommandDispatcher.getClient();
-                                    resetUseCooldown(client);
-                                    pressKeyTranslation(client, "key.use");
-                                    triggerItemUse(client, player);
-                                } catch (Exception ignored) {}
+                                Object client = CommandDispatcher.getClient();
+                                resetUseCooldown(client);
+                                pressKeyTranslation(client, "key.use");
+                                triggerItemUse(client, player);
                                 CommandDispatcher.addFeedback("§a进入进食/饮用模式");
                                 return;
                             }
@@ -98,9 +96,8 @@ public class AutomationManager {
                     return;
                 }
             } catch (Exception e) {
-                System.err.println("[MCC] Use failed: " + e);
+                CommandDispatcher.addFeedback("§c无法执行使用动作: " + e.getMessage());
             }
-            CommandDispatcher.addFeedback("§c无法执行使用动作");
             return;
         }
         useFreq = freq;
@@ -406,52 +403,36 @@ public class AutomationManager {
             // 强制重置冷却，确保立即触发
             resetUseCooldown(client);
 
-            Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
-            Object item = (stack != null) ? MappingHelper.invokeMethod(stack, "getItem") : null;
-            String registryName = "";
-            if (item != null) {
-                try {
-                    Object id = MappingHelper.invokeMethod(MappingHelper.getRegistry("ITEM"), "getId", item);
-                    registryName = id.toString();
-                } catch (Exception ignored) {}
-            }
-
-            // 1. 针对鱼竿等特殊物品：强制直接交互，绕过准星检查
-            if (registryName.contains("fishing_rod")) {
-                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                if (im != null) {
-                    try {
-                        MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                        MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                        return;
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            // 2. 核心逻辑：调用标准的 doItemUse()
-            // 这一步会处理火箭、工具交互、方块点击以及进食启动
-            boolean done = false;
+            // 1. 核心逻辑：调用标准的 doItemUse()
+            // 这是 1.21.x 最通用的交互入口，处理了视线目标（方块/实体）、火箭、工具交互和进食
             String[] methods = {"method_1531", "method1531", "doItemUse"};
+            boolean doItemUseCalled = false;
             for (String m : methods) {
                 try {
                     MappingHelper.invokeMethod(client, m);
-                    done = true;
+                    doItemUseCalled = true;
                     break;
                 } catch (Exception ignored) {}
             }
 
-            // 3. 兜底策略：如果 doItemUse 失败，尝试直接 interactItem
-            if (!done) {
-                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                if (im != null) {
-                    try { MappingHelper.invokeMethod(im, "interactItem", player, mainHand); } catch (Exception ignored) {}
+            // 2. 补齐视觉效果
+            try { MappingHelper.invokeMethod(player, "swingHand", mainHand); } catch (Exception ignored) {}
+
+            // 3. 鱼竿专项兜底：如果 doItemUse 没起作用（常因视线被挡），强制直接发起交互
+            Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
+            if (stack != null) {
+                Object item = MappingHelper.invokeMethod(stack, "getItem");
+                if (item != null) {
+                    String reg = "";
+                    try { reg = MappingHelper.invokeMethod(MappingHelper.getRegistry("ITEM"), "getId", item).toString(); } catch (Exception ignored) {}
+                    if (reg.contains("fishing_rod")) {
+                        Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                        if (im != null) {
+                            try { MappingHelper.invokeMethod(im, "interactItem", player, mainHand); } catch (Exception ignored) {}
+                        }
+                    }
                 }
             }
-
-            // 4. 同步补齐视觉效果
-            try {
-                MappingHelper.invokeMethod(player, "swingHand", mainHand);
-            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 
