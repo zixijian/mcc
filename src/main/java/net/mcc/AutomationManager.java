@@ -308,7 +308,6 @@ public class AutomationManager {
                             }
                         }
                     } catch (Exception e) {
-                        // 如果出错，且不再使用了，也认为结束了
                         if (!isUsing) finished = true;
                     }
                 }
@@ -322,22 +321,14 @@ public class AutomationManager {
                     return;
                 }
 
+                // 进食模式：保持按键按下并尝试触发
                 pressKeyTranslation(client, "key.use");
-                if (!isUsing) {
-                    triggerItemUse(client, player);
-                }
+                if (!isUsing) triggerItemUse(client, player);
             } else if (useOnce) {
-                if (useOnceTimer == 0) {
-                    resetUseCooldown(client);
-                    pressKeyTranslation(client, "key.use");
-                    triggerItemUse(client, player);
-                    useOnceTimer = 2; // 模拟长按 2 ticks
-                } else {
-                    if (--useOnceTimer <= 0) {
-                        releaseKeyTranslation(client, "key.use");
-                        useOnce = false;
-                    }
-                }
+                resetUseCooldown(client);
+                incrementKeyCounter(client, "key.use");
+                triggerItemUse(client, player);
+                useOnce = false;
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
@@ -414,46 +405,36 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
             if (mainHand == null) return;
 
-            Object stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
-            Object item = (stack != null) ? MappingHelper.invokeMethod(stack, "getItem") : null;
-            String registryName = "";
-            if (item != null) {
-                try {
-                    Object id = MappingHelper.invokeMethod(MappingHelper.getRegistry("ITEM"), "getId", item);
-                    registryName = id.toString();
-                } catch (Exception ignored) {}
-            }
-
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             if (im == null) return;
 
-            // 1. 强制直接调用 interactItem/interactBlock (绕过 doItemUse 的视线检测限制)
-            // 鱼竿、烟花火箭、工具通常可以直接通过这些方法触发，最为稳健
-            boolean acted = false;
+            // 1. 优先强制尝试直接调用 interactItem (覆盖火箭、鱼竿和大多数手持物品逻辑)
+            boolean success = false;
             try {
                 Object res = MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                if (res != null && !res.toString().toLowerCase().contains("pass")) acted = true;
+                if (res != null && !res.toString().toLowerCase().contains("pass")) success = true;
             } catch (Exception ignored) {}
 
-            if (!acted) {
+            // 2. 如果 interactItem 没触发，尝试 interactBlock (针对木斧锄地、开箱子等)
+            if (!success) {
                 try {
                     Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
                     if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
                         Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                        if (res != null && !res.toString().toLowerCase().contains("pass")) acted = true;
+                        if (res != null && !res.toString().toLowerCase().contains("pass")) success = true;
                     }
                 } catch (Exception ignored) {}
             }
 
-            // 2. Fallback: 尝试原版 doItemUse()
-            if (!acted) {
+            // 3. 兜底逻辑：调用 MinecraftClient.doItemUse()
+            if (!success) {
                 String[] methods = {"method_1531", "method1531", "doItemUse"};
                 for (String m : methods) {
                     try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
                 }
             }
 
-            // 3. 显式触发挥手 (补全视觉效果)
+            // 4. 显式触发挥手 (补全视觉效果)
             try {
                 boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 if (!isUsing) {
