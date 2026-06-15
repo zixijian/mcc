@@ -100,7 +100,6 @@ public class MappingHelper {
         MAPPINGS.put("dayTime", is1214 ? "comp_2191" : "method_11870");
         MAPPINGS.put("getMainHandStack", "method_18861");
         MAPPINGS.put("getStackInHand", "method_6047");
-        MAPPINGS.put("isFood", "method_19230");
         MAPPINGS.put("keysById", "field_1655"); // KeyBinding.keysById
         MAPPINGS.put("translationKey", "field_1654"); // KeyBinding.translationKey
         MAPPINGS.put("literal", "method_43471");

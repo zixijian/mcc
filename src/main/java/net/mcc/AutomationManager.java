@@ -319,10 +319,6 @@ public class AutomationManager {
                 // 进食模式：保持按键按下并尝试触发
                 pressKeyTranslation(client, "key.use");
                 if (!isUsing) triggerItemUse(client, player);
-            } else if (useOnce) {
-                resetUseCooldown(client);
-                triggerItemUse(client, player);
-                useOnce = false;
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
