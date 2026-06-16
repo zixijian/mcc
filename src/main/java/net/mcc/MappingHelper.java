@@ -49,6 +49,7 @@ public class MappingHelper {
         MAPPINGS.put("TextColor", "net/minecraft/class_5251");
         MAPPINGS.put("LevelProperties", "net/minecraft/class_31");
         MAPPINGS.put("Entity", "net/minecraft/class_1297");
+        MAPPINGS.put("UseAction", "net/minecraft/class_1839");
         MAPPINGS.put("EntityHitResult", "net/minecraft/class_3966");
         MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
@@ -84,6 +85,7 @@ public class MappingHelper {
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
         MAPPINGS.put("MAIN_HAND", "field_5808");
+        MAPPINGS.put("fishHook", "field_7500");
 
         // 方法映射 (Yarn -> Intermediary)
         MAPPINGS.put("getInstance", "method_1551");
@@ -92,6 +94,7 @@ public class MappingHelper {
         MAPPINGS.put("getNetworkHandler", "method_1562");
         MAPPINGS.put("getHealth", "method_6032");
         MAPPINGS.put("getMaxHealth", "method_6063");
+        MAPPINGS.put("getStackInHand", "method_6047");
         MAPPINGS.put("getHungerManager", "method_6122");
         MAPPINGS.put("getFoodLevel", "method_7586");
         MAPPINGS.put("getTimeOfDay", "method_8510");
@@ -112,6 +115,7 @@ public class MappingHelper {
         MAPPINGS.put("isEmpty", "method_7960");
         MAPPINGS.put("getCount", "method_7947");
         MAPPINGS.put("getItem", "method_7909");
+        MAPPINGS.put("getUseAction", "method_7951");
         MAPPINGS.put("getMaxDamage", "method_7936");
         MAPPINGS.put("getDamage", "method_7919");
         MAPPINGS.put("requestRespawn", "method_7331");

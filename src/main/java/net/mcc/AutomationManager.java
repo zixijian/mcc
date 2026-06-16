@@ -9,6 +9,9 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
 
+    private static int smartUseTimer = 0;
+    private static int lastItemCount = -1;
+    private static Object lastItemType = null;
 
     private static Float lockedPitch = null;
     private static Float lockedYaw = null;
@@ -109,6 +112,20 @@ public class AutomationManager {
 
     public static void showStatus() {
         CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Rsp:%b", attackFreq, useFreq, autoRespawn));
+    }
+
+    private static int getItemCount(Object stack) {
+        try {
+            if (stack == null || (boolean)MappingHelper.invokeMethod(stack, "isEmpty")) return 0;
+            return ((Number)MappingHelper.invokeMethod(stack, "getCount")).intValue();
+        } catch (Exception e) { return 0; }
+    }
+
+    private static Object getItemType(Object stack) {
+        try {
+            if (stack == null) return null;
+            return MappingHelper.invokeMethod(stack, "getItem");
+        } catch (Exception e) { return null; }
     }
 
     public static void probeMappings() {
@@ -219,27 +236,82 @@ public class AutomationManager {
             }
 
             // 3. 使用逻辑
+            Object stack = null;
+            try {
+                Class<?> handClass = MappingHelper.getClass("Hand");
+                Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
+                stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
+            } catch (Exception ignored) {}
+
+            boolean isEatable = false;
+            if (stack != null) {
+                try {
+                    if (!((Boolean)MappingHelper.invokeMethod(stack, "isEmpty"))) {
+                        Object action = MappingHelper.invokeMethod(stack, "getUseAction");
+                        if (action != null) {
+                            String actionName = action.toString();
+                            isEatable = "EAT".equals(actionName) || "DRINK".equals(actionName);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
             if (useOnce) {
-                resetUseCooldown(client);
-                incrementKeyCounter(client, "key.use");
-                triggerItemUse(client, player);
-                useOnce = false;
-            } else if (useFreq == 0) {
-                resetUseCooldown(client);
-                pressKeyTranslation(client, "key.use");
-                // 持续按住模式下，如果当前没有在“使用”（如吃东西、拉弓），则尝试触发
-                boolean isUsing = false;
-                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-                if (!isUsing) {
-                    triggerItemUse(client, player);
-                }
-            } else if (useFreq > 0) {
-                releaseKeyTranslation(client, "key.use");
-                if (--useTimer <= 0) {
+                if (isEatable) {
+                    smartUseTimer = 100; // 最多持续 5 秒
+                    lastItemCount = getItemCount(stack);
+                    lastItemType = getItemType(stack);
+                    useOnce = false;
+                } else {
                     resetUseCooldown(client);
                     incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
-                    useTimer = useFreq;
+                    useOnce = false;
+                }
+            }
+
+            if (smartUseTimer > 0) {
+                if (isEatable && getItemType(stack) == lastItemType && getItemCount(stack) == lastItemCount) {
+                    pressKeyTranslation(client, "key.use");
+                    smartUseTimer--;
+                } else {
+                    smartUseTimer = 0;
+                    if (useFreq != 0) releaseKeyTranslation(client, "key.use");
+                }
+            } else if (useFreq == 0) {
+                resetUseCooldown(client);
+                if (isEatable) {
+                    pressKeyTranslation(client, "key.use");
+                } else {
+                    boolean isUsing = false;
+                    try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+
+                    boolean hasFishHook = false;
+                    try {
+                        Object hook = MappingHelper.getFieldValue(player, "fishHook", null);
+                        if (hook != null) hasFishHook = true;
+                    } catch (Exception ignored) {}
+
+                    if (!isUsing && !hasFishHook) {
+                        triggerItemUse(client, player);
+                    }
+                }
+            } else if (useFreq > 0) {
+                if (isEatable) {
+                    if (--useTimer <= 0) {
+                        smartUseTimer = 100;
+                        lastItemCount = getItemCount(stack);
+                        lastItemType = getItemType(stack);
+                        useTimer = useFreq;
+                    }
+                } else {
+                    releaseKeyTranslation(client, "key.use");
+                    if (--useTimer <= 0) {
+                        resetUseCooldown(client);
+                        incrementKeyCounter(client, "key.use");
+                        triggerItemUse(client, player);
+                        useTimer = useFreq;
+                    }
                 }
             }
         } catch (Throwable ignored) {}
