@@ -16,13 +16,24 @@ public class MappingHelper {
     static {
         boolean is1214 = false;
         try {
-            // 探测 1.21.4+: ClientPlayNetworkHandler.playerListEntries 从 field_3695 变为 field_52609
-            Class<?> cpnh = Class.forName("net.minecraft.class_634");
-            try {
-                cpnh.getDeclaredField("field_52609");
-                is1214 = true;
-            } catch (NoSuchFieldException e) {
-                is1214 = false;
+            // 鲁棒的 1.21.4+ 探测逻辑
+            Class<?> mcClass = null;
+            try { mcClass = Class.forName("net.minecraft.class_310"); } catch (Throwable t) {
+                try { mcClass = Class.forName("net.minecraft.client.MinecraftClient"); } catch (Throwable ignored) {}
+            }
+            if (mcClass != null) {
+                try {
+                    // 1.21.1: field_1755 (currentScreen) 是对象; 1.21.4+: field_1755 (attackCooldown) 是 int
+                    Field f = mcClass.getDeclaredField("field_1755");
+                    if (f.getType() == int.class) is1214 = true;
+                } catch (Throwable t) {
+                    try {
+                        // 1.21.1 CPNH: field_3695; 1.21.4+ CPNH: field_52609
+                        Class<?> cpnh = Class.forName("net.minecraft.class_634");
+                        cpnh.getDeclaredField("field_52609");
+                        is1214 = true;
+                    } catch (Throwable ignored) {}
+                }
             }
         } catch (Throwable ignored) {}
 
@@ -120,7 +131,7 @@ public class MappingHelper {
         MAPPINGS.put("getMaxDamage", "method_7936");
         MAPPINGS.put("getDamage", "method_7919");
         MAPPINGS.put("requestRespawn", "method_7331");
-        MAPPINGS.put("doAttack", "method_1536");
+        MAPPINGS.put("doAttack", is1214 ? "method_1582" : "method_1536");
         MAPPINGS.put("attackEntity", "method_2918");
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
@@ -184,6 +195,14 @@ public class MappingHelper {
             case "TextColor": return "net.minecraft.network.chat.TextColor";
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
+            case "ChatScreen": return "net.minecraft.client.gui.screens.ChatScreen";
+            case "Hand": return "net.minecraft.world.InteractionHand";
+            case "ItemStack": return "net.minecraft.world.item.ItemStack";
+            case "ActionResult": return "net.minecraft.world.InteractionResult";
+            case "BlockPos": return "net.minecraft.core.BlockPos";
+            case "Direction": return "net.minecraft.core.Direction";
+            case "BlockHitResult": return "net.minecraft.world.phys.BlockHitResult";
+            case "EntityHitResult": return "net.minecraft.world.phys.EntityHitResult";
             default: return null;
         }
     }
@@ -283,25 +302,72 @@ public class MappingHelper {
 
     public static Object invokeMethod(Object obj, String yarnName, Object... args) throws Exception {
         if (obj == null) return null;
-        if (obj instanceof Class) {
-            return invokeMethod(null, (Class<?>) obj, yarnName, args);
+        Class<?> clazz = (obj instanceof Class) ? (Class<?>) obj : obj.getClass();
+        Object target = (obj instanceof Class) ? null : obj;
+
+        try {
+            return invokeMethodInternal(target, clazz, yarnName, args);
+        } catch (NoSuchMethodException e) {
+            // 如果主要映射名失败，尝试可能的 Intermediary 候选名 (针对版本差异较大的方法)
+            String[] fallbacks = {};
+            if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583"};
+            else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582"};
+            else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902", "method_2896"};
+            else if (yarnName.equals("interactItem")) fallbacks = new String[]{"method_2896", "method_2919"};
+            else if (yarnName.equals("attackBlock")) fallbacks = new String[]{"method_2902", "method_2910"};
+
+            for (String f : fallbacks) {
+                try { return invokeMethodInternal(target, clazz, f, args); } catch (Exception ignored) {}
+            }
+            throw e;
         }
-        return invokeMethod(obj, obj.getClass(), yarnName, args);
     }
 
     public static Object invokeStaticMethod(Class<?> clazz, String yarnName, Object... args) throws Exception {
-        return invokeMethod(null, clazz, yarnName, args);
+        return invokeMethod((Object) clazz, yarnName, args);
     }
 
-    private static Object invokeMethod(Object obj, Class<?> clazz, String yarnName, Object... args) throws Exception {
+    public static boolean isInstance(Object obj, String yarnName) {
+        if (obj == null) return false;
+        try {
+            Class<?> clazz = getClass(yarnName);
+            if (clazz.isInstance(obj)) return true;
+        } catch (Throwable ignored) {}
+        String cn = obj.getClass().getName();
+        String mapped = map(yarnName).replace('/', '.');
+        return cn.equals(mapped) || cn.contains(mapped) || cn.endsWith("." + yarnName) || cn.equals(yarnName);
+    }
+
+    public static Object getEnumConstant(String yarnClassName, String constantName) {
+        try {
+            Class<?> clazz = getClass(yarnClassName);
+            if (clazz.isEnum()) {
+                for (Object c : clazz.getEnumConstants()) {
+                    if (String.valueOf(c).equals(constantName)) return c;
+                }
+            }
+            // 尝试通过静态字段获取 (支持 Hand.MAIN_HAND 等)
+            Field f = findField(clazz, constantName);
+            return f.get(null);
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static Object invokeMethodInternal(Object obj, Class<?> clazz, String yarnName, Object... args) throws Exception {
         String mappedName = map(yarnName);
         String altMappedName = mappedName.replace("_", "");
 
-        // 针对 Record 类型
+        // 针对 Record 类型及其组件访问器的增强支持
         if (clazz.isRecord()) {
             for (java.lang.reflect.RecordComponent rc : clazz.getRecordComponents()) {
-                if (rc.getName().equals(mappedName) || rc.getName().equals(yarnName)) {
-                    return rc.getAccessor().invoke(obj);
+                String rcName = rc.getName();
+                if (rcName.equals(mappedName) || rcName.equals(yarnName) ||
+                    mappedName.endsWith(rcName) || yarnName.toLowerCase().contains(rcName.toLowerCase())) {
+                    try {
+                        Method accessor = rc.getAccessor();
+                        accessor.setAccessible(true);
+                        return accessor.invoke(obj);
+                    } catch (Exception ignored) {}
                 }
             }
         }

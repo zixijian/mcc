@@ -162,7 +162,7 @@ public class AutomationManager {
             // 探测 interactItem / interactBlock
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             if (im != null) {
-                String[] imMethods = {"method_2896", "method_2919", "method_2902", "interactItem", "interactBlock"};
+                String[] imMethods = {"method_2896", "method_2919", "method_2902", "method_2905", "method_2910", "interactItem", "interactBlock", "attackBlock"};
                 for (String m : imMethods) {
                     try {
                         for (java.lang.reflect.Method jm : im.getClass().getDeclaredMethods()) {
@@ -187,13 +187,11 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 健壮的当前屏幕检测：允许在聊天界面执行任务
-            Object currentScreen = null;
+            // 健壮的当前屏幕检测：仅允许在无界面或聊天界面执行
             try {
-                currentScreen = MappingHelper.getFieldValue(client, "currentScreen", null);
-                if (currentScreen != null) {
-                    Class<?> chatScreenClass = MappingHelper.getClass("ChatScreen");
-                    if (!chatScreenClass.isInstance(currentScreen)) return;
+                Object currentScreen = MappingHelper.getFieldValue(client, "currentScreen", null);
+                if (currentScreen != null && !MappingHelper.isInstance(currentScreen, "ChatScreen")) {
+                    return;
                 }
             } catch (Exception ignored) {}
 
@@ -240,8 +238,7 @@ public class AutomationManager {
             // 3. 使用逻辑
             Object stack = null;
             try {
-                Class<?> handClass = MappingHelper.getClass("Hand");
-                Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
+                Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
                 stack = MappingHelper.invokeMethod(player, "getStackInHand", mainHand);
             } catch (Exception ignored) {}
 
@@ -251,7 +248,8 @@ public class AutomationManager {
                     if (!((Boolean)MappingHelper.invokeMethod(stack, "isEmpty"))) {
                         Object action = MappingHelper.invokeMethod(stack, "getUseAction");
                         if (action != null) {
-                            String actionName = action.toString();
+                            // 使用 name() 方法获取枚举名称，比 toString() 更可靠
+                            String actionName = (String) MappingHelper.invokeMethod(action, "name");
                             isEatable = "EAT".equals(actionName) || "DRINK".equals(actionName);
                         }
                     }
@@ -282,7 +280,8 @@ public class AutomationManager {
                     if (!isUsing) triggerItemUse(client, player);
                 } else {
                     smartUseTimer = 0;
-                    // 在 0 频率模式下，我们由 0 频率逻辑统一控制按键，不需要在此释放
+                    // 进食结束，仅在非 0 频率模式下释放按键。
+                    // 0 频率模式（持续使用模式）应由主逻辑继续维持按键状态。
                     if (useFreq != 0) {
                         releaseKeyTranslation(client, "key.use");
                     }
@@ -334,52 +333,30 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            Object target = null;
-            String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-            for (String f : targetFields) {
-                try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
-            }
-
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-            boolean attacked = false;
+            Object target = null;
+            try { target = MappingHelper.getFieldValue(client, "crosshairTarget", null); } catch (Exception ignored) {}
 
-            if (target != null && im != null) {
-                if (target.getClass().getName().contains("class_3966")) { // EntityHitResult
-                    Object entity = null;
-                    try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
-                    try { if (entity == null) entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
-
-                    if (entity != null) {
-                        try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {}
-                        try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {}
-                        MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                        attacked = true;
+            // 1. 优先方块攻击 (修复 1.21.11 木斧)
+            boolean blockAttacked = false;
+            if (target != null && im != null && MappingHelper.isInstance(target, "BlockHitResult")) {
+                try {
+                    Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
+                    Object side = MappingHelper.invokeMethod(target, "getSide");
+                    if (pos != null && side != null) {
+                        MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                        blockAttacked = true;
                     }
-                } else if (target.getClass().getName().contains("class_3965")) { // BlockHitResult
-                    // 针对 1.21.11 木斧左键: 显式调用 attackBlock
-                    try {
-                        Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
-                        Object side = MappingHelper.invokeMethod(target, "getSide");
-                        if (pos != null && side != null) {
-                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                            attacked = true;
-                        }
-                    } catch (Exception ignored) {}
-                }
+                } catch (Exception ignored) {}
             }
 
-            if (!attacked) {
-                String[] methods = {"method_1536", "method1536", "doAttack"};
-                for (String m : methods) {
-                    try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
-                }
-            }
+            // 2. 原生 doAttack 兜底 (实体攻击、原生回调)
+            try { MappingHelper.invokeMethod(client, "doAttack"); } catch (Exception ignored) {}
 
-            // 显式挥手确保视觉反馈和同步
+            // 3. 强制挥手
             try {
-                Class<?> handClass = MappingHelper.getClass("Hand");
-                Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-                MappingHelper.invokeMethod(player, "swingHand", mainHand);
+                Object hand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+                MappingHelper.invokeMethod(player, "swingHand", hand);
             } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
@@ -387,45 +364,25 @@ public class AutomationManager {
     private static void triggerItemUse(Object client, Object player) {
         try {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-            Class<?> handClass = MappingHelper.getClass("Hand");
-            Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-            if (mainHand == null || im == null) return;
+            Object hand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            Object target = null;
-            String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-            for (String f : targetFields) {
-                try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
-            }
-
-            // 1. 尝试方块交互
-            if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
-                try {
-                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                    if (res != null) {
-                        String s = res.toString();
-                        if (s.contains("SUCCESS") || s.contains("CONSUME")) {
-                            MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                            return;
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            // 2. 尝试物品直接交互 (用于钓鱼竿、药水、食物等)
-            try {
-                Object res = MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                if (res != null) {
-                    String s = res.toString();
-                    if (s.contains("SUCCESS") || s.contains("CONSUME")) {
-                        MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                        return;
-                    }
-                }
-            } catch (Exception ignored) {}
-
-            // 3. 最终兜底使用
+            // 1. 原生 doItemUse (执行方块、火箭、药水最可靠方式)
+            boolean success = false;
             try {
                 MappingHelper.invokeMethod(client, "doItemUse");
+                success = true;
+            } catch (Exception ignored) {}
+
+            // 2. 辅助补偿 (用于 1.21.x 进食、钓鱼等)
+            if (im != null && hand != null) {
+                try { MappingHelper.invokeMethod(im, "interactItem", player, hand); } catch (Exception ignored) {}
+            }
+
+            // 3. 挥手
+            try {
+                boolean isUsing = false;
+                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+                if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", hand);
             } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
