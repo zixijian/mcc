@@ -98,8 +98,11 @@ public class MappingHelper {
         MAPPINGS.put("getTime", "method_11871");
         MAPPINGS.put("gameTime", is1214 ? "comp_2190" : "method_11871");
         MAPPINGS.put("dayTime", is1214 ? "comp_2191" : "method_11870");
+
+        // 核心物品获取映射
         MAPPINGS.put("getMainHandStack", "method_18861");
         MAPPINGS.put("getStackInHand", "method_6047");
+
         MAPPINGS.put("keysById", "field_1655"); // KeyBinding.keysById
         MAPPINGS.put("translationKey", "field_1654"); // KeyBinding.translationKey
         MAPPINGS.put("literal", "method_43471");
@@ -210,7 +213,7 @@ public class MappingHelper {
             try { return itf.getDeclaredMethod(mapped, params); } catch (NoSuchMethodException ignored) {}
             try { return itf.getDeclaredMethod(altMapped, params); } catch (NoSuchMethodException ignored) {}
         }
-        throw new NoSuchMethodException(yarnName);
+        throw new NoSuchMethodException(yarnName + " (mapped: " + mapped + ") in " + clazz.getName());
     }
 
     public static Object getFieldValue(Object obj, String yarnName, Class<?> clazz) throws Exception {
