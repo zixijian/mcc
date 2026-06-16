@@ -54,6 +54,7 @@ public class MappingHelper {
         MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
+        MAPPINGS.put("ChatScreen", "net/minecraft/class_408");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");

@@ -187,13 +187,15 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
+            // 健壮的当前屏幕检测：允许在聊天界面执行任务
             Object currentScreen = null;
             try {
-                Class<?> screenClass = MappingHelper.getClass("Screen");
-                currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
+                currentScreen = MappingHelper.getFieldValue(client, "currentScreen", null);
+                if (currentScreen != null) {
+                    Class<?> chatScreenClass = MappingHelper.getClass("ChatScreen");
+                    if (!chatScreenClass.isInstance(currentScreen)) return;
+                }
             } catch (Exception ignored) {}
-            if (currentScreen != null) return;
 
             // 视角锁定
             if (lockedPitch != null && lockedYaw != null) {
@@ -274,25 +276,34 @@ public class AutomationManager {
                 if (isEatable && getItemType(stack) == lastItemType && getItemCount(stack) == lastItemCount) {
                     pressKeyTranslation(client, "key.use");
                     smartUseTimer--;
+                    // 如果尚未进入“使用”状态（比如刚开始吃），显式尝试触发
+                    boolean isUsing = false;
+                    try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+                    if (!isUsing) triggerItemUse(client, player);
                 } else {
                     smartUseTimer = 0;
                     if (useFreq != 0) releaseKeyTranslation(client, "key.use");
                 }
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
-                if (isEatable) {
-                    pressKeyTranslation(client, "key.use");
+
+                boolean hasFishHook = false;
+                try {
+                    Object hook = MappingHelper.getFieldValue(player, "fishHook", null);
+                    if (hook != null) hasFishHook = true;
+                } catch (Exception ignored) {}
+
+                if (hasFishHook) {
+                    // 如果已经有钩子，必须释放按键，否则会自动收竿
+                    releaseKeyTranslation(client, "key.use");
                 } else {
+                    // 恢复原本逻辑：持续按住按键以支持方块、火箭、弓箭、盾牌等
+                    pressKeyTranslation(client, "key.use");
+
                     boolean isUsing = false;
                     try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-
-                    boolean hasFishHook = false;
-                    try {
-                        Object hook = MappingHelper.getFieldValue(player, "fishHook", null);
-                        if (hook != null) hasFishHook = true;
-                    } catch (Exception ignored) {}
-
-                    if (!isUsing && !hasFishHook) {
+                    // 如果尚未进入“使用”状态，显式触发一次交互
+                    if (!isUsing) {
                         triggerItemUse(client, player);
                     }
                 }
@@ -303,6 +314,7 @@ public class AutomationManager {
                         lastItemCount = getItemCount(stack);
                         lastItemType = getItemType(stack);
                         useTimer = useFreq;
+                        triggerItemUse(client, player); // 立即启动
                     }
                 } else {
                     releaseKeyTranslation(client, "key.use");
@@ -388,7 +400,14 @@ public class AutomationManager {
                 for (String m : blockMethods) {
                     try {
                         Object res = MappingHelper.invokeMethod(im, m, player, mainHand, target);
-                        if (res != null) { success = true; break; }
+                        if (res != null) {
+                            String resStr = res.toString();
+                            // 仅当结果是 SUCCESS 或 CONSUME 时才视为成功。如果返回 PASS (跳过)，说明方块没交互，应继续尝试物品交互。
+                            if (resStr.contains("SUCCESS") || resStr.contains("CONSUME")) {
+                                success = true;
+                                break;
+                            }
+                        }
                     } catch (Exception ignored) {}
                 }
             }
