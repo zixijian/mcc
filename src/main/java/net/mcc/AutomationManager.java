@@ -338,23 +338,21 @@ public class AutomationManager {
             try { target = MappingHelper.getFieldValue(client, "crosshairTarget", null); } catch (Exception ignored) {}
             Object hand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            boolean done = false;
-            // 1. 优先方块攻击 (针对 1.21.11 木斧领地标记)
+            // 1. 尝试显式方块攻击补丁 (针对 1.21.11 木斧领地标记)
             if (target != null && im != null && MappingHelper.isInstance(target, "BlockHitResult")) {
                 try {
                     Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                     Object side = MappingHelper.invokeMethod(target, "getSide");
                     if (pos != null && side != null) {
-                        Object res = MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                        if (res != null && res.toString().contains("SUCCESS")) done = true;
+                        MappingHelper.invokeMethod(im, "attackBlock", pos, side);
                     }
                 } catch (Exception ignored) {}
             }
 
-            // 2. 执行原生攻击逻辑 (实体攻击、原生冷却及回调)
+            // 2. 核心原生 doAttack (处理实体攻击、连击逻辑及 1.21.x 常规交互)
             try { MappingHelper.invokeMethod(client, "doAttack"); } catch (Exception ignored) {}
 
-            // 3. 视觉反馈
+            // 3. 确保挥手
             if (hand != null) {
                 try { MappingHelper.invokeMethod(player, "swingHand", hand); } catch (Exception ignored) {}
             }
@@ -370,37 +368,30 @@ public class AutomationManager {
 
             if (hand == null) return;
 
-            // 如果当前已在“使用中”（拉弓、进食中），切勿重复触发
+            // 严禁在“使用中”重复触发，否则进食/拉弓进度会瞬间归零
             try { if ((boolean) MappingHelper.invokeMethod(player, "isUsingItem")) return; } catch (Exception ignored) {}
 
-            boolean done = false;
+            // 采用“原生主导 + 智能接口补偿”策略
 
-            // 1. 原生入口 (火箭、药水、方块放置最稳入口)
-            try {
-                MappingHelper.invokeMethod(client, "doItemUse");
-                if ((boolean) MappingHelper.invokeMethod(player, "isUsingItem")) done = true;
-            } catch (Exception ignored) {}
-
-            // 2. 接口入口 (针对 1.21.11 下进食、喝药、钓鱼失效的深度补偿)
-            if (!done && im != null) {
-                // 如果指向方块，尝试方块交互（解决 1.21.11 下方块放置无效）
-                if (target != null && MappingHelper.isInstance(target, "BlockHitResult")) {
-                    try {
-                        Object res = MappingHelper.invokeMethod(im, "interactBlock", player, hand, target);
-                        if (res != null && !res.toString().contains("PASS")) done = true;
-                    } catch (Exception ignored) {}
-                }
-
-                // 物品交互 (解决 1.21.11 下饮食、药水失效)
-                if (!done) {
-                    try {
-                        Object res = MappingHelper.invokeMethod(im, "interactItem", player, hand);
-                        if (res != null && !res.toString().contains("PASS")) done = true;
-                    } catch (Exception ignored) {}
-                }
+            // A. 方块放置补丁 (仅在指向方块时优先尝试)
+            if (target != null && MappingHelper.isInstance(target, "BlockHitResult") && im != null) {
+                try {
+                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, hand, target);
+                    if (res != null && !res.toString().contains("PASS")) return;
+                } catch (Exception ignored) {}
             }
 
-            // 3. 视觉反馈
+            // B. 原生入口 (处理火箭、喷溅药水、及多数常规物品)
+            try { MappingHelper.invokeMethod(client, "doItemUse"); } catch (Exception ignored) {}
+
+            // C. 进食/药水补偿补丁 (针对某些版本原生入口无法触发饮食的情况)
+            try {
+                if (!(boolean) MappingHelper.invokeMethod(player, "isUsingItem") && im != null) {
+                    MappingHelper.invokeMethod(im, "interactItem", player, hand);
+                }
+            } catch (Exception ignored) {}
+
+            // D. 确保视觉反馈
             try {
                 if (!(boolean) MappingHelper.invokeMethod(player, "isUsingItem")) {
                     MappingHelper.invokeMethod(player, "swingHand", hand);

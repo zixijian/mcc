@@ -309,20 +309,21 @@ public class MappingHelper {
         try {
             return invokeMethodInternal(target, clazz, yarnName, args);
         } catch (NoSuchMethodException e) {
-            // 策略 1: 尝试预定义的候选 Intermediary 名
+            // 策略 1: 尝试多候选名。包含 1.21.1 和 1.21.4+ 的交叉 Intermediary。
             String[] fallbacks = {};
             if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583", "method_1582"};
             else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582", "method_1583"};
-            else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902", "method_2910"};
+            else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902", "method_2896", "method_2910"};
             else if (yarnName.equals("interactItem")) fallbacks = new String[]{"method_2896", "method_2919", "method_2917"};
             else if (yarnName.equals("attackBlock")) fallbacks = new String[]{"method_2902", "method_2910", "method_2907"};
             else if (yarnName.equals("swingHand")) fallbacks = new String[]{"method_6104", "method_23667", "method_5973"};
+            else if (yarnName.equals("isUsingItem")) fallbacks = new String[]{"method_6115", "method_5971"};
 
             for (String f : fallbacks) {
                 try { return invokeMethodInternal(target, clazz, f, args); } catch (Exception ignored) {}
             }
 
-            // 策略 2: 基于参数类型和返回类型的结构特征搜索
+            // 策略 2: 结构化特征深度搜索
             try {
                 Method structural = findMethodStructural(clazz, yarnName, args);
                 if (structural != null) return structural.invoke(target, args);
