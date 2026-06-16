@@ -282,7 +282,10 @@ public class AutomationManager {
                     if (!isUsing) triggerItemUse(client, player);
                 } else {
                     smartUseTimer = 0;
-                    if (useFreq != 0) releaseKeyTranslation(client, "key.use");
+                    // 在 0 频率模式下，我们由 0 频率逻辑统一控制按键，不需要在此释放
+                    if (useFreq != 0) {
+                        releaseKeyTranslation(client, "key.use");
+                    }
                 }
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
@@ -340,103 +343,89 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             boolean attacked = false;
 
-            if (target != null && target.getClass().getName().contains("class_3966")) { // EntityHitResult
-                Object entity = null;
-                try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
-                try { if (entity == null) entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
+            if (target != null && im != null) {
+                if (target.getClass().getName().contains("class_3966")) { // EntityHitResult
+                    Object entity = null;
+                    try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
+                    try { if (entity == null) entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
 
-                if (entity != null && im != null) {
-                    // 移除伤害无敌帧
-                    try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {} // hurtResistantTime
-                    try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {} // hurtTime
-
-                    // 直接调用 interactionManager.attackEntity
-                    try {
+                    if (entity != null) {
+                        try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {}
                         MappingHelper.invokeMethod(im, "attackEntity", player, entity);
                         attacked = true;
+                    }
+                } else if (target.getClass().getName().contains("class_3965")) { // BlockHitResult
+                    // 针对 1.21.11 木斧左键: 显式调用 attackBlock
+                    try {
+                        Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
+                        Object side = MappingHelper.invokeMethod(target, "getSide");
+                        if (pos != null && side != null) {
+                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            attacked = true;
+                        }
                     } catch (Exception ignored) {}
                 }
             }
 
             if (!attacked) {
-                // 执行常规攻击 (doAttack)
                 String[] methods = {"method_1536", "method1536", "doAttack"};
                 for (String m : methods) {
                     try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
                 }
             }
 
-            // 显式触发一次挥手
+            // 显式挥手确保视觉反馈和同步
             try {
                 Class<?> handClass = MappingHelper.getClass("Hand");
                 Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-                String[] swingMethods = {"method_6104", "method6104", "swingHand"};
-                for (String m : swingMethods) {
-                    try { MappingHelper.invokeMethod(player, m, mainHand); break; } catch (Exception ignored) {}
-                }
+                MappingHelper.invokeMethod(player, "swingHand", mainHand);
             } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            boolean success = false;
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Class<?> handClass = MappingHelper.getClass("Hand");
             Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-
             if (mainHand == null || im == null) return;
 
-            // 1. 针对方块交互的优化：检查 crosshairTarget
             Object target = null;
             String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
             for (String f : targetFields) {
                 try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
             }
 
+            // 1. 尝试方块交互
             if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
-                // 尝试 interactBlock (1.21.1: method_2896, 1.21.4+: method_2902)
-                String[] blockMethods = {"method_2896", "method2896", "method_2902", "method2902", "interactBlock"};
-                for (String m : blockMethods) {
-                    try {
-                        Object res = MappingHelper.invokeMethod(im, m, player, mainHand, target);
-                        if (res != null) {
-                            String resStr = res.toString();
-                            // 仅当结果是 SUCCESS 或 CONSUME 时才视为成功。如果返回 PASS (跳过)，说明方块没交互，应继续尝试物品交互。
-                            if (resStr.contains("SUCCESS") || resStr.contains("CONSUME")) {
-                                success = true;
-                                break;
-                            }
+                try {
+                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
+                    if (res != null) {
+                        String s = res.toString();
+                        if (s.contains("SUCCESS") || s.contains("CONSUME")) {
+                            MappingHelper.invokeMethod(player, "swingHand", mainHand);
+                            return;
                         }
-                    } catch (Exception ignored) {}
-                }
+                    }
+                } catch (Exception ignored) {}
             }
 
-            // 2. 尝试常规 doItemUse (MinecraftClient)
-            if (!success) {
-                String[] methods = {"method_1531", "method1531", "doItemUse"};
-                for (String m : methods) {
-                    try { MappingHelper.invokeMethod(client, m); success = true; break; } catch (Exception ignored) {}
-                }
-            }
-
-            // 3. Fallback: interactItem (InteractionManager)
-            if (!success) {
-                String[] interactMethods = {"method_2896", "method2896", "method_2919", "method2919", "interactItem"};
-                for (String m : interactMethods) {
-                    try { MappingHelper.invokeMethod(im, m, player, mainHand); success = true; break; } catch (Exception ignored) {}
-                }
-            }
-
-            // 4. 显式触发挥手 (增加方块交互的视觉反馈)
+            // 2. 尝试物品直接交互 (用于钓鱼竿、药水、食物等)
             try {
-                boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
-                if (!isUsing) {
-                    String[] swingMethods = {"method_6104", "method6104", "swingHand"};
-                    for (String m : swingMethods) {
-                        try { MappingHelper.invokeMethod(player, m, mainHand); break; } catch (Exception ignored) {}
+                Object res = MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                if (res != null) {
+                    String s = res.toString();
+                    if (s.contains("SUCCESS") || s.contains("CONSUME")) {
+                        MappingHelper.invokeMethod(player, "swingHand", mainHand);
+                        return;
                     }
                 }
+            } catch (Exception ignored) {}
+
+            // 3. 最终兜底使用
+            try {
+                MappingHelper.invokeMethod(client, "doItemUse");
             } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
