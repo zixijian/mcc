@@ -308,19 +308,52 @@ public class MappingHelper {
         try {
             return invokeMethodInternal(target, clazz, yarnName, args);
         } catch (NoSuchMethodException e) {
-            // 如果主要映射名失败，尝试可能的 Intermediary 候选名 (针对版本差异较大的方法)
+            // 策略 1: 尝试预定义的候选 Intermediary 名
             String[] fallbacks = {};
             if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583"};
             else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582"};
             else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902", "method_2896"};
             else if (yarnName.equals("interactItem")) fallbacks = new String[]{"method_2896", "method_2919"};
             else if (yarnName.equals("attackBlock")) fallbacks = new String[]{"method_2902", "method_2910"};
+            else if (yarnName.equals("swingHand")) fallbacks = new String[]{"method_6104", "method_23667"};
 
             for (String f : fallbacks) {
                 try { return invokeMethodInternal(target, clazz, f, args); } catch (Exception ignored) {}
             }
+
+            // 策略 2: 基于结构特征搜索 (仅针对关键交互方法)
+            try {
+                Method structural = findMethodByStructure(clazz, yarnName, args);
+                if (structural != null) return structural.invoke(target, args);
+            } catch (Exception ignored) {}
+
             throw e;
         }
+    }
+
+    private static Method findMethodByStructure(Class<?> clazz, String action, Object[] args) {
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (m.getParameterCount() != args.length) continue;
+            Class<?>[] pTypes = m.getParameterTypes();
+            boolean match = true;
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] != null && !pTypes[i].isAssignableFrom(args[i].getClass())) {
+                    if (pTypes[i].isPrimitive()) {
+                         if (pTypes[i] == int.class && args[i] instanceof Integer) continue;
+                         if (pTypes[i] == boolean.class && args[i] instanceof Boolean) continue;
+                    }
+                    match = false; break;
+                }
+            }
+            if (!match) continue;
+
+            // 根据方法特征判定
+            String n = m.getName();
+            if (action.equals("doItemUse") && m.getReturnType() == void.class && n.startsWith("method_")) return m;
+            if (action.equals("interactBlock") && m.getParameterCount() == 3 && n.startsWith("method_")) return m;
+            if (action.equals("attackBlock") && m.getParameterCount() == 2 && n.startsWith("method_")) return m;
+        }
+        return null;
     }
 
     public static Object invokeStaticMethod(Class<?> clazz, String yarnName, Object... args) throws Exception {
