@@ -338,21 +338,23 @@ public class AutomationManager {
             try { target = MappingHelper.getFieldValue(client, "crosshairTarget", null); } catch (Exception ignored) {}
             Object hand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 针对 1.21.11 木斧标记：如果指向方块，优先尝试显式攻击方块
+            boolean done = false;
+            // 1. 优先方块攻击 (针对 1.21.11 木斧领地标记)
             if (target != null && im != null && MappingHelper.isInstance(target, "BlockHitResult")) {
                 try {
                     Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                     Object side = MappingHelper.invokeMethod(target, "getSide");
                     if (pos != null && side != null) {
-                        MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                        Object res = MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                        if (res != null && res.toString().contains("SUCCESS")) done = true;
                     }
                 } catch (Exception ignored) {}
             }
 
-            // 2. 执行原生攻击逻辑
+            // 2. 执行原生攻击逻辑 (实体攻击、原生冷却及回调)
             try { MappingHelper.invokeMethod(client, "doAttack"); } catch (Exception ignored) {}
 
-            // 3. 强制挥手
+            // 3. 视觉反馈
             if (hand != null) {
                 try { MappingHelper.invokeMethod(player, "swingHand", hand); } catch (Exception ignored) {}
             }
@@ -363,28 +365,46 @@ public class AutomationManager {
         try {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object hand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+            Object target = null;
+            try { target = MappingHelper.getFieldValue(client, "crosshairTarget", null); } catch (Exception ignored) {}
+
             if (hand == null) return;
 
-            // 如果已经在动作中，严禁再次触发交互（否则进度会重置）
-            boolean isUsing = false;
-            try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-            if (isUsing) return;
+            // 如果当前已在“使用中”（拉弓、进食中），切勿重复触发
+            try { if ((boolean) MappingHelper.invokeMethod(player, "isUsingItem")) return; } catch (Exception ignored) {}
 
-            // 1. 尝试原生 doItemUse (处理方块放置、火箭、喷溅药水)
-            try { MappingHelper.invokeMethod(client, "doItemUse"); } catch (Exception ignored) {}
+            boolean done = false;
 
-            // 2. 如果原生入口未能成功启动动作（如食物、药水、钓鱼竿），进行显式接口补偿
+            // 1. 原生入口 (火箭、药水、方块放置最稳入口)
             try {
-                isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
-                if (!isUsing && im != null) {
-                    MappingHelper.invokeMethod(im, "interactItem", player, hand);
-                }
+                MappingHelper.invokeMethod(client, "doItemUse");
+                if ((boolean) MappingHelper.invokeMethod(player, "isUsingItem")) done = true;
             } catch (Exception ignored) {}
 
-            // 3. 始终触发挥手（除非已在动作中）
+            // 2. 接口入口 (针对 1.21.11 下进食、喝药、钓鱼失效的深度补偿)
+            if (!done && im != null) {
+                // 如果指向方块，尝试方块交互（解决 1.21.11 下方块放置无效）
+                if (target != null && MappingHelper.isInstance(target, "BlockHitResult")) {
+                    try {
+                        Object res = MappingHelper.invokeMethod(im, "interactBlock", player, hand, target);
+                        if (res != null && !res.toString().contains("PASS")) done = true;
+                    } catch (Exception ignored) {}
+                }
+
+                // 物品交互 (解决 1.21.11 下饮食、药水失效)
+                if (!done) {
+                    try {
+                        Object res = MappingHelper.invokeMethod(im, "interactItem", player, hand);
+                        if (res != null && !res.toString().contains("PASS")) done = true;
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            // 3. 视觉反馈
             try {
-                isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
-                if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", hand);
+                if (!(boolean) MappingHelper.invokeMethod(player, "isUsingItem")) {
+                    MappingHelper.invokeMethod(player, "swingHand", hand);
+                }
             } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }

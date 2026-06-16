@@ -16,19 +16,19 @@ public class MappingHelper {
     static {
         boolean is1214 = false;
         try {
-            // 鲁棒的 1.21.4+ 探测逻辑
-            Class<?> mcClass = null;
-            try { mcClass = Class.forName("net.minecraft.class_310"); } catch (Throwable t) {
-                try { mcClass = Class.forName("net.minecraft.client.MinecraftClient"); } catch (Throwable ignored) {}
-            }
-            if (mcClass != null) {
+            // 极致鲁棒的 1.21.4+ 探测逻辑：多点交叉验证
+            Class<?> mc = null;
+            try { mc = Class.forName("net.minecraft.class_310"); } catch (Throwable ignored) {}
+            if (mc != null) {
                 try {
-                    // 1.21.1: field_1755 (currentScreen) 是对象; 1.21.4+: field_1755 (attackCooldown) 是 int
-                    Field f = mcClass.getDeclaredField("field_1755");
-                    if (f.getType() == int.class) is1214 = true;
-                } catch (Throwable t) {
+                    // 特征 1: field_1755 在 1.21.1 是 Screen 对象，在 1.21.4+ 是 int (attackCooldown)
+                    Field f1755 = mc.getDeclaredField("field_1755");
+                    if (f1755.getType() == int.class) is1214 = true;
+                } catch (Throwable ignored) {}
+
+                if (!is1214) {
                     try {
-                        // 1.21.1 CPNH: field_3695; 1.21.4+ CPNH: field_52609
+                        // 特征 2: ClientPlayNetworkHandler.field_52609 (playerListEntries) 仅在 1.21.4+ 存在
                         Class<?> cpnh = Class.forName("net.minecraft.class_634");
                         cpnh.getDeclaredField("field_52609");
                         is1214 = true;
