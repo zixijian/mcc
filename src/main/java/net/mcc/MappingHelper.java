@@ -97,6 +97,7 @@ public class MappingHelper {
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
         MAPPINGS.put("MAIN_HAND", "field_5808");
+        MAPPINGS.put("interactionManager", "field_1761");
         MAPPINGS.put("fishHook", "field_7500");
 
         // 方法映射 (Yarn -> Intermediary)
@@ -136,7 +137,7 @@ public class MappingHelper {
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
-        MAPPINGS.put("interactBlock", is1214 ? "method_2896" : "method_2905");
+        MAPPINGS.put("interactBlock", is1214 ? "method_2902" : "method_2905");
         MAPPINGS.put("swingHand", "method_6104");
         MAPPINGS.put("getEntity", "method_17770");
         MAPPINGS.put("getBlockPos", "method_17777");
@@ -310,20 +311,20 @@ public class MappingHelper {
         } catch (NoSuchMethodException e) {
             // 策略 1: 尝试预定义的候选 Intermediary 名
             String[] fallbacks = {};
-            if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583"};
-            else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582"};
-            else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902", "method_2896"};
-            else if (yarnName.equals("interactItem")) fallbacks = new String[]{"method_2896", "method_2919"};
-            else if (yarnName.equals("attackBlock")) fallbacks = new String[]{"method_2902", "method_2910"};
-            else if (yarnName.equals("swingHand")) fallbacks = new String[]{"method_6104", "method_23667"};
+            if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583", "method_1582"};
+            else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582", "method_1583"};
+            else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902", "method_2910"};
+            else if (yarnName.equals("interactItem")) fallbacks = new String[]{"method_2896", "method_2919", "method_2917"};
+            else if (yarnName.equals("attackBlock")) fallbacks = new String[]{"method_2902", "method_2910", "method_2907"};
+            else if (yarnName.equals("swingHand")) fallbacks = new String[]{"method_6104", "method_23667", "method_5973"};
 
             for (String f : fallbacks) {
                 try { return invokeMethodInternal(target, clazz, f, args); } catch (Exception ignored) {}
             }
 
-            // 策略 2: 基于结构特征搜索 (仅针对关键交互方法)
+            // 策略 2: 基于参数类型和返回类型的结构特征搜索
             try {
-                Method structural = findMethodByStructure(clazz, yarnName, args);
+                Method structural = findMethodStructural(clazz, yarnName, args);
                 if (structural != null) return structural.invoke(target, args);
             } catch (Exception ignored) {}
 
@@ -331,27 +332,46 @@ public class MappingHelper {
         }
     }
 
-    private static Method findMethodByStructure(Class<?> clazz, String action, Object[] args) {
+    private static Method findMethodStructural(Class<?> clazz, String action, Object[] args) {
         for (Method m : clazz.getDeclaredMethods()) {
             if (m.getParameterCount() != args.length) continue;
             Class<?>[] pTypes = m.getParameterTypes();
             boolean match = true;
             for (int i = 0; i < args.length; i++) {
-                if (args[i] != null && !pTypes[i].isAssignableFrom(args[i].getClass())) {
-                    if (pTypes[i].isPrimitive()) {
-                         if (pTypes[i] == int.class && args[i] instanceof Integer) continue;
-                         if (pTypes[i] == boolean.class && args[i] instanceof Boolean) continue;
+                if (args[i] != null) {
+                    Class<?> aType = args[i].getClass();
+                    Class<?> pType = pTypes[i];
+                    if (!pType.isAssignableFrom(aType)) {
+                        // 处理基本类型包装
+                        if (pType == int.class && (aType == Integer.class || Number.class.isAssignableFrom(aType))) continue;
+                        if (pType == boolean.class && aType == Boolean.class) continue;
+                        // 针对 1.21.11 的模糊匹配：如果参数是核心类，只要名称包含关键词即可
+                        String ptn = pType.getName().toLowerCase();
+                        String atn = aType.getName().toLowerCase();
+                        if ((ptn.contains("player") || ptn.contains("class_746") || ptn.contains("class_1657")) &&
+                            (atn.contains("player") || atn.contains("class_746") || atn.contains("class_1657"))) continue;
+                        if (ptn.contains("hand") || ptn.contains("class_1268")) continue;
+                        if (ptn.contains("hitresult") || ptn.contains("class_3965") || ptn.contains("class_3966")) continue;
+
+                        match = false; break;
                     }
-                    match = false; break;
                 }
             }
             if (!match) continue;
 
-            // 根据方法特征判定
-            String n = m.getName();
-            if (action.equals("doItemUse") && m.getReturnType() == void.class && n.startsWith("method_")) return m;
-            if (action.equals("interactBlock") && m.getParameterCount() == 3 && n.startsWith("method_")) return m;
-            if (action.equals("attackBlock") && m.getParameterCount() == 2 && n.startsWith("method_")) return m;
+            // 根据方法返回类型和参数数量进行最后确认
+            if (action.equals("doItemUse") || action.equals("doAttack")) {
+                if (m.getReturnType() == void.class) return m;
+            } else if (action.equals("interactBlock") || action.equals("interactItem")) {
+                // interact 系列通常返回 ActionResult (InteractionResult)
+                String rtn = m.getReturnType().getName().toLowerCase();
+                if (rtn.contains("result") || rtn.contains("class_1269")) return m;
+            } else if (action.equals("attackBlock")) {
+                // attackBlock 通常返回 boolean 或 void
+                if (m.getReturnType() == boolean.class || m.getReturnType() == void.class) return m;
+            } else if (action.equals("swingHand")) {
+                if (m.getReturnType() == void.class) return m;
+            }
         }
         return null;
     }
@@ -374,14 +394,23 @@ public class MappingHelper {
     public static Object getEnumConstant(String yarnClassName, String constantName) {
         try {
             Class<?> clazz = getClass(yarnClassName);
+            // 优先通过字段查找，因为字段映射处理了混淆名
+            try {
+                Field f = findField(clazz, constantName);
+                return f.get(null);
+            } catch (Exception ignored) {}
+
             if (clazz.isEnum()) {
                 for (Object c : clazz.getEnumConstants()) {
-                    if (String.valueOf(c).equals(constantName)) return c;
+                    String name = String.valueOf(c);
+                    if (name.equals(constantName)) return c;
+                    // 处理可能的混淆字段名
+                    try {
+                        String mappedConstant = MAPPINGS.get(constantName);
+                        if (mappedConstant != null && name.equals(mappedConstant)) return c;
+                    } catch (Exception ignored) {}
                 }
             }
-            // 尝试通过静态字段获取 (支持 Hand.MAIN_HAND 等)
-            Field f = findField(clazz, constantName);
-            return f.get(null);
         } catch (Throwable ignored) {}
         return null;
     }
