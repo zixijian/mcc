@@ -275,8 +275,21 @@ public class AutomationManager {
             }
 
             if (!attacked) {
+                if (target != null && target.getClass().getName().contains("class_3965") && im != null) { // BlockHitResult
+                    try {
+                        Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
+                        Object side = MappingHelper.invokeMethod(target, "getSide");
+                        if (pos != null && side != null) {
+                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            attacked = true;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            if (!attacked) {
                 // 执行常规攻击 (doAttack)
-                String[] methods = {"method_1536", "method1536", "doAttack"};
+                String[] methods = {"method_1536", "method1536", "method_1587", "method1587", "doAttack"};
                 for (String m : methods) {
                     try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
                 }
@@ -296,48 +309,28 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            boolean success = false;
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Class<?> handClass = MappingHelper.getClass("Hand");
             Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
 
             if (mainHand == null || im == null) return;
 
-            // 1. 针对方块交互的优化：检查 crosshairTarget
-            Object target = null;
-            String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-            for (String f : targetFields) {
-                try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
+            // 1. 尝试常规 doItemUse (MinecraftClient)
+            // 它会处理大多数逻辑（方块交互、使用物品）
+            String[] methods = {"method_1531", "method1531", "method_1583", "method1583", "doItemUse"};
+            for (String m : methods) {
+                try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
             }
 
-            if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
-                // 尝试 interactBlock (1.21.1: method_2896, 1.21.4+: method_2902)
-                String[] blockMethods = {"method_2896", "method2896", "method_2902", "method2902", "interactBlock"};
-                for (String m : blockMethods) {
-                    try {
-                        Object res = MappingHelper.invokeMethod(im, m, player, mainHand, target);
-                        if (res != null) { success = true; break; }
-                    } catch (Exception ignored) {}
-                }
+            // 2. 补充调用 interactItem (确保钓鱼竿、药水在 doItemUse 未能成功触发时执行)
+            // 针对 1.21.4+: method_2919 是 interactItem
+            // 针对 1.21.1: method_2896 是 interactItem
+            String[] interactMethods = {"method_2896", "method2896", "method_2919", "method2919", "interactItem"};
+            for (String m : interactMethods) {
+                try { MappingHelper.invokeMethod(im, m, player, mainHand); break; } catch (Exception ignored) {}
             }
 
-            // 2. 尝试常规 doItemUse (MinecraftClient)
-            if (!success) {
-                String[] methods = {"method_1531", "method1531", "doItemUse"};
-                for (String m : methods) {
-                    try { MappingHelper.invokeMethod(client, m); success = true; break; } catch (Exception ignored) {}
-                }
-            }
-
-            // 3. Fallback: interactItem (InteractionManager)
-            if (!success) {
-                String[] interactMethods = {"method_2896", "method2896", "method_2919", "method2919", "interactItem"};
-                for (String m : interactMethods) {
-                    try { MappingHelper.invokeMethod(im, m, player, mainHand); success = true; break; } catch (Exception ignored) {}
-                }
-            }
-
-            // 4. 显式触发挥手 (增加方块交互的视觉反馈)
+            // 3. 显式触发挥手 (提供视觉反馈)
             try {
                 boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 if (!isUsing) {
