@@ -16,13 +16,24 @@ public class MappingHelper {
     static {
         boolean is1214 = false;
         try {
-            // 探测 1.21.4+: ClientPlayNetworkHandler.playerListEntries 从 field_3695 变为 field_52609
-            Class<?> cpnh = Class.forName("net.minecraft.class_634");
+            // 探测 1.21.4+ (含 1.21.11): MinecraftClient.field_1755 (原 currentScreen: Screen) 变为 (attackCooldown: int)
+            Class<?> mc = Class.forName("net.minecraft.class_310");
             try {
-                cpnh.getDeclaredField("field_52609");
-                is1214 = true;
-            } catch (NoSuchFieldException e) {
-                is1214 = false;
+                Field f = mc.getDeclaredField("field_1755");
+                if (f.getType() == int.class) is1214 = true;
+            } catch (Exception e) {
+                // 回退策略 1: 检查 ClientPlayNetworkHandler 是否存在 field_52609
+                try {
+                    Class.forName("net.minecraft.class_634").getDeclaredField("field_52609");
+                    is1214 = true;
+                } catch (Exception e2) {
+                    // 回退策略 2: 检查 InteractionManager 是否存在 1.21.4+ 的方法名
+                    try {
+                        Class<?> im = Class.forName("net.minecraft.class_636");
+                        im.getDeclaredMethod("method_2919", Class.forName("net.minecraft.class_1657"), Class.forName("net.minecraft.class_1268"));
+                        is1214 = true;
+                    } catch (Exception ignored) {}
+                }
             }
         } catch (Throwable ignored) {}
 
@@ -98,6 +109,9 @@ public class MappingHelper {
         MAPPINGS.put("getTime", "method_11871");
         MAPPINGS.put("gameTime", is1214 ? "comp_2190" : "method_11871");
         MAPPINGS.put("dayTime", is1214 ? "comp_2191" : "method_11870");
+        MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
+        MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
+        MAPPINGS.put("fishHook", is1214 ? "field_54930" : "field_7500");
         MAPPINGS.put("keysById", "field_1655"); // KeyBinding.keysById
         MAPPINGS.put("translationKey", "field_1654"); // KeyBinding.translationKey
         MAPPINGS.put("literal", "method_43471");
@@ -301,7 +315,7 @@ public class MappingHelper {
 
         if (yarnName.equals("doItemUse")) { names.add("method_1531"); names.add("method_1583"); }
         if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
-        if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); }
+        if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); names.add("method_2902"); }
         if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); }
         if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); }
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }

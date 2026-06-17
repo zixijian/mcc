@@ -140,22 +140,30 @@ public class InventoryManager {
         String id = "minecraft:air";
         String name = "";
         try {
-            // 策略 1: Registries.ITEM.getId(item) (获取 ID: minecraft:stone)
+            // 1. 获取物品 ID
             Object registry = MappingHelper.getRegistry("ITEM");
             if (registry != null) {
                 Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
                 if (identifier != null) {
                     String sid = identifier.toString();
-                    if (!sid.isEmpty() && !sid.equals("minecraft:air")) id = sid;
+                    if (!sid.isEmpty() && !sid.equals("minecraft:air") && !sid.startsWith("[")) id = sid;
                 }
             }
 
-            // 策略 2: 获取物品显示名称 (getName -> getString)
+            // 2. 获取显示名
             try {
                 Object text = MappingHelper.invokeMethod(item, "getName");
-                if (text != null) {
-                    String sname = (String) MappingHelper.invokeMethod(text, "getString");
-                    if (sname != null && !sname.isEmpty()) name = sname;
+                if (text != null && !(text instanceof Boolean)) {
+                    if (text instanceof String) {
+                        String st = (String) text;
+                        if (!st.isEmpty() && !st.startsWith("[")) name = st;
+                    } else {
+                        Object s = MappingHelper.invokeMethod(text, "getString");
+                        if (s instanceof String) {
+                            String st = (String) s;
+                            if (!st.isEmpty() && !st.startsWith("[")) name = st;
+                        }
+                    }
                 }
             } catch (Exception ignored) {}
 

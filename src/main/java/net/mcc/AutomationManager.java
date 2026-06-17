@@ -1,5 +1,7 @@
 package net.mcc;
 
+import java.lang.reflect.Field;
+
 public class AutomationManager {
     private static int attackFreq = -1;
     private static int useFreq = -1;
@@ -114,6 +116,12 @@ public class AutomationManager {
     public static void probeMappings() {
         CommandDispatcher.addFeedback("§d[MCC Mapping Probe]");
         try {
+            Class<?> mcClass = MappingHelper.getClass("MinecraftClient");
+            try {
+                Field f = mcClass.getDeclaredField("field_1755");
+                CommandDispatcher.addFeedback("§7- Version detect: field_1755 type is " + f.getType().getSimpleName());
+            } catch (Exception ignored) {}
+
             Object client = CommandDispatcher.getClient();
             Object player = CommandDispatcher.getClientPlayer();
 
@@ -248,19 +256,34 @@ public class AutomationManager {
     private static void triggerAttack(Object client, Object player) {
         try {
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239")); // HitResult
+            if (target == null) {
+                // 扫描任何 HitResult 类型的字段
+                for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
+                    if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
+                        f.setAccessible(true);
+                        target = f.get(client);
+                        if (target != null) break;
+                    }
+                }
+            }
+
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             boolean acted = false;
 
-            // 1. 优先尝试原生 doAttack (处理常规攻击、方块破坏起始)
+            // 1. 原生 doAttack
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
                 acted = true;
             } catch (Exception ignored) {}
 
-            // 2. 深度补偿：如果准星指向方块，显式调用 attackBlock (兼容木斧等插件)
-            if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
-                if (im != null) {
+            // 2. 深度补偿
+            if (target != null) {
+                Class<?> blockHitResultClass = MappingHelper.getClass("BlockHitResult");
+                Class<?> entityHitResultClass = MappingHelper.getClass("EntityHitResult");
+
+                if (blockHitResultClass.isInstance(target) && im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
@@ -270,24 +293,18 @@ public class AutomationManager {
                         }
                     } catch (Exception ignored) {}
                 }
-            }
 
-            // 3. 深度补偿：如果准星指向实体，显式调用 attackEntity
-            if (target != null && target.getClass().getName().contains("class_3966")) { // EntityHitResult
-                if (im != null) {
-                    try {
-                        Object entity = MappingHelper.invokeMethod(target, "getEntity");
-                        if (entity != null) {
-                            try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
-                            try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
-                            MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                            acted = true;
-                        }
-                    } catch (Exception ignored) {}
+                if (entityHitResultClass.isInstance(target) && im != null) {
+                    Object entity = MappingHelper.invokeMethod(target, "getEntity");
+                    if (entity != null) {
+                        try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
+                        MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                        acted = true;
+                    }
                 }
             }
 
-            // 4. 强制触发挥手
             if (acted) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
     }
@@ -303,7 +320,16 @@ public class AutomationManager {
 
             // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-            if (target != null && target.getClass().getName().contains("class_3965")) {
+            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
+            if (target == null) {
+                for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
+                    if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
+                        f.setAccessible(true); target = f.get(client); if (target != null) break;
+                    }
+                }
+            }
+
+            if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
                 Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
                 if (res != null) {
                     boolean accepted = false;
@@ -331,6 +357,16 @@ public class AutomationManager {
             for (String f : fields) {
                 try { MappingHelper.setFieldValue(client, f, 0); } catch (Exception ignored) {}
             }
+
+            // 扫描任何看起来像冷却的 int 字段
+            try {
+                for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
+                    if (f.getType() == int.class && (f.getName().contains("Cooldown") || f.getName().contains("field_175"))) {
+                        f.setAccessible(true);
+                        f.setInt(client, 0);
+                    }
+                }
+            } catch (Exception ignored) {}
 
             Object player = CommandDispatcher.getClientPlayer();
             if (player != null) {
@@ -383,6 +419,15 @@ public class AutomationManager {
             for (String f : fields) {
                 try { MappingHelper.setFieldValue(client, f, 0); } catch (Exception ignored) {}
             }
+
+            try {
+                for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
+                    if (f.getType() == int.class && (f.getName().contains("Cooldown") || f.getName().contains("field_175"))) {
+                        f.setAccessible(true);
+                        f.setInt(client, 0);
+                    }
+                }
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 
