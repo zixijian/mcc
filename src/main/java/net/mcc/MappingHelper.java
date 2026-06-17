@@ -148,6 +148,7 @@ public class MappingHelper {
         MAPPINGS.put("getColor", "method_1135"); // Team.getColor
         MAPPINGS.put("getStyle", "method_10855");
         MAPPINGS.put("getRgb", "method_35842"); // TextColor.getRgb
+        MAPPINGS.put("isAccepted", "method_23665");
     }
 
     public static String map(String name) {
@@ -246,6 +247,19 @@ public class MappingHelper {
         return null;
     }
 
+    public static Object getEnumConstant(String className, String constantName) {
+        try {
+            Class<?> clazz = getClass(className);
+            if (clazz == null) clazz = Class.forName(className.replace('/', '.'));
+            for (Object obj : clazz.getEnumConstants()) {
+                if (String.valueOf(obj).equals(constantName)) return obj;
+            }
+            // Fallback to static field
+            return getFieldValue(null, constantName, clazz);
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     public static Field findFieldByType(Class<?> owner, Class<?> type) {
         Class<?> curr = owner;
         while (curr != null && curr != Object.class) {
@@ -278,95 +292,123 @@ public class MappingHelper {
 
     public static Object invokeMethod(Object obj, String yarnName, Object... args) throws Exception {
         if (obj == null) return null;
-        if (obj instanceof Class) {
-            return invokeMethod(null, (Class<?>) obj, yarnName, args);
+        Class<?> clazz = (obj instanceof Class) ? (Class<?>) obj : obj.getClass();
+        Object targetObj = (obj instanceof Class) ? null : obj;
+
+        java.util.List<String> names = new java.util.ArrayList<>();
+        names.add(map(yarnName));
+        names.add(yarnName);
+
+        if (yarnName.equals("doItemUse")) { names.add("method_1531"); names.add("method_1583"); }
+        if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
+        if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); }
+        if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); }
+        if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); }
+        if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
+        if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
+        if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
+        if (yarnName.equals("swingHand")) { names.add("method_6104"); }
+
+        for (String name : names) {
+            try { return invokeMethodInternal(targetObj, clazz, name, args); } catch (NoSuchMethodException ignored) {}
         }
-        return invokeMethod(obj, obj.getClass(), yarnName, args);
+
+        try {
+            Method m = findMethodStructural(clazz, args);
+            if (m != null) {
+                m.setAccessible(true);
+                return m.invoke(targetObj, convertArgs(m.getParameterTypes(), args));
+            }
+        } catch (Exception ignored) {}
+
+        throw new NoSuchMethodException(yarnName + " in " + clazz.getName());
     }
 
     public static Object invokeStaticMethod(Class<?> clazz, String yarnName, Object... args) throws Exception {
-        return invokeMethod(null, clazz, yarnName, args);
+        return invokeMethod(clazz, yarnName, args);
     }
 
-    private static Object invokeMethod(Object obj, Class<?> clazz, String yarnName, Object... args) throws Exception {
-        String mappedName = map(yarnName);
-        String altMappedName = mappedName.replace("_", "");
-
-        // 针对 Record 类型
+    private static Object invokeMethodInternal(Object obj, Class<?> clazz, String name, Object... args) throws Exception {
+        String altName = name.replace("_", "");
         if (clazz.isRecord()) {
             for (java.lang.reflect.RecordComponent rc : clazz.getRecordComponents()) {
-                if (rc.getName().equals(mappedName) || rc.getName().equals(yarnName)) {
+                if (rc.getName().equals(name) || rc.getName().equals(altName)) {
                     return rc.getAccessor().invoke(obj);
                 }
             }
         }
 
         Class<?>[] types = new Class[args.length];
-        for (int i = 0; i < args.length; i++) {
-            if (args[i] == null) types[i] = Object.class;
-            else {
-                types[i] = args[i].getClass();
-            }
-        }
+        for (int i = 0; i < args.length; i++) types[i] = (args[i] == null) ? Object.class : args[i].getClass();
 
         Class<?> curr = clazz;
         while (curr != null) {
             for (Method m : curr.getDeclaredMethods()) {
-                String n = m.getName();
-                if ((n.equals(mappedName) || n.equals(altMappedName) || n.equals(yarnName)) && m.getParameterCount() == args.length) {
-                    boolean match = true;
-                    Class<?>[] pTypes = m.getParameterTypes();
-                    for (int i = 0; i < args.length; i++) {
-                        Class<?> pType = pTypes[i];
-                        if (args[i] != null) {
-                            Class<?> aType = types[i];
-                            if (!pType.isAssignableFrom(aType)) {
-                                if (pType == int.class && (aType == Integer.class || Number.class.isAssignableFrom(aType))) continue;
-                                if (pType == boolean.class && aType == Boolean.class) continue;
-                                if (pType == float.class && (aType == Float.class || Number.class.isAssignableFrom(aType))) continue;
-                                if (pType == long.class && (aType == Long.class || Number.class.isAssignableFrom(aType))) continue;
-                                if (pType == double.class && (aType == Double.class || Number.class.isAssignableFrom(aType))) continue;
-                                if (pType == byte.class && aType == Byte.class) continue;
-                                if (pType == short.class && aType == Short.class) continue;
-                                if (pType == char.class && aType == Character.class) continue;
-                                match = false; break;
-                            }
-                        } else if (pType.isPrimitive()) {
-                            match = false; break;
-                        }
-                    }
-                    if (match) {
+                if ((m.getName().equals(name) || m.getName().equals(altName)) && m.getParameterCount() == args.length) {
+                    if (isParameterMatch(m.getParameterTypes(), types, args)) {
                         m.setAccessible(true);
-                        Object[] convertedArgs = new Object[args.length];
-                        for (int i = 0; i < args.length; i++) {
-                            if (args[i] == null) convertedArgs[i] = null;
-                            else if (pTypes[i] == int.class) convertedArgs[i] = ((Number) args[i]).intValue();
-                            else if (pTypes[i] == float.class) convertedArgs[i] = ((Number) args[i]).floatValue();
-                            else if (pTypes[i] == long.class) convertedArgs[i] = ((Number) args[i]).longValue();
-                            else if (pTypes[i] == double.class) convertedArgs[i] = ((Number) args[i]).doubleValue();
-                            else if (pTypes[i] == byte.class) convertedArgs[i] = ((Number) args[i]).byteValue();
-                            else if (pTypes[i] == short.class) convertedArgs[i] = ((Number) args[i]).shortValue();
-                            else convertedArgs[i] = args[i];
-                        }
-                        return m.invoke(obj, convertedArgs);
+                        return m.invoke(obj, convertArgs(m.getParameterTypes(), args));
                     }
                 }
             }
-            // 递归检查所有接口
             for (Class<?> itf : curr.getInterfaces()) {
-                try {
-                    Method m = findMethodInInterface(itf, mappedName, yarnName, args.length, types);
-                    if (m != null) {
-                        m.setAccessible(true);
-                        return m.invoke(obj, args);
-                    }
-                } catch (Exception ignored) {}
+                Method m = findMethodInInterface(itf, name, altName, args.length, types, args);
+                if (m != null) {
+                    m.setAccessible(true);
+                    return m.invoke(obj, convertArgs(m.getParameterTypes(), args));
+                }
             }
             if (curr == Object.class) break;
             curr = curr.getSuperclass();
         }
+        throw new NoSuchMethodException(name);
+    }
 
-        throw new NoSuchMethodException(yarnName + " (mapped: " + mappedName + ") in " + clazz.getName());
+    private static boolean isParameterMatch(Class<?>[] pTypes, Class<?>[] aTypes, Object[] args) {
+        for (int i = 0; i < pTypes.length; i++) {
+            Class<?> p = pTypes[i];
+            Class<?> a = aTypes[i];
+            if (args[i] == null) {
+                if (p.isPrimitive()) return false;
+                continue;
+            }
+            if (!p.isAssignableFrom(a)) {
+                if (p == int.class && (Number.class.isAssignableFrom(a))) continue;
+                if (p == boolean.class && a == Boolean.class) continue;
+                if (p == float.class && (Number.class.isAssignableFrom(a))) continue;
+                if (p == long.class && (Number.class.isAssignableFrom(a))) continue;
+                if (p == double.class && (Number.class.isAssignableFrom(a))) continue;
+                if (p == byte.class && a == Byte.class) continue;
+                if (p == short.class && a == Short.class) continue;
+                if (p == char.class && a == Character.class) continue;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Object[] convertArgs(Class<?>[] pTypes, Object[] args) {
+        Object[] res = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            if (args[i] == null) res[i] = null;
+            else if (pTypes[i] == int.class) res[i] = ((Number) args[i]).intValue();
+            else if (pTypes[i] == float.class) res[i] = ((Number) args[i]).floatValue();
+            else if (pTypes[i] == long.class) res[i] = ((Number) args[i]).longValue();
+            else if (pTypes[i] == double.class) res[i] = ((Number) args[i]).doubleValue();
+            else if (pTypes[i] == byte.class) res[i] = ((Number) args[i]).byteValue();
+            else if (pTypes[i] == short.class) res[i] = ((Number) args[i]).shortValue();
+            else res[i] = args[i];
+        }
+        return res;
+    }
+
+    private static Method findMethodStructural(Class<?> clazz, Object[] args) {
+        Class<?>[] types = new Class[args.length];
+        for (int i = 0; i < args.length; i++) types[i] = (args[i] == null) ? Object.class : args[i].getClass();
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (m.getParameterCount() == args.length && isParameterMatch(m.getParameterTypes(), types, args)) return m;
+        }
+        return null;
     }
 
     public static Object getRegistry(String name) {
@@ -382,23 +424,14 @@ public class MappingHelper {
         return null;
     }
 
-    private static Method findMethodInInterface(Class<?> itf, String mapped, String yarn, int argCount, Class<?>[] argTypes) {
+    private static Method findMethodInInterface(Class<?> itf, String name, String altName, int argCount, Class<?>[] argTypes, Object[] args) {
         for (Method m : itf.getDeclaredMethods()) {
-            if ((m.getName().equals(mapped) || m.getName().equals(yarn)) && m.getParameterCount() == argCount) {
-                boolean match = true;
-                Class<?>[] pTypes = m.getParameterTypes();
-                for (int i = 0; i < argCount; i++) {
-                    if (argTypes[i] != null && !pTypes[i].isAssignableFrom(argTypes[i])) {
-                        if (pTypes[i] == int.class && argTypes[i] == Integer.class) continue;
-                        if (pTypes[i] == boolean.class && argTypes[i] == Boolean.class) continue;
-                        match = false; break;
-                    }
-                }
-                if (match) return m;
+            if ((m.getName().equals(name) || m.getName().equals(altName)) && m.getParameterCount() == argCount) {
+                if (isParameterMatch(m.getParameterTypes(), argTypes, args)) return m;
             }
         }
         for (Class<?> superItf : itf.getInterfaces()) {
-            Method m = findMethodInInterface(superItf, mapped, yarn, argCount, argTypes);
+            Method m = findMethodInInterface(superItf, name, altName, argCount, argTypes, args);
             if (m != null) return m;
         }
         return null;

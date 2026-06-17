@@ -247,99 +247,63 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            Object target = null;
-            String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-            for (String f : targetFields) {
-                try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
-            }
-
+            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+            Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             boolean attacked = false;
 
-            if (target != null && target.getClass().getName().contains("class_3966")) { // EntityHitResult
-                Object entity = null;
-                try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
-                try { if (entity == null) entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
-
+            if (target != null && target.getClass().getName().contains("class_3966")) { // Entity
+                Object entity = MappingHelper.invokeMethod(target, "getEntity");
                 if (entity != null && im != null) {
-                    // 移除伤害无敌帧
-                    try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {} // hurtResistantTime
-                    try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {} // hurtTime
-
-                    // 直接调用 interactionManager.attackEntity
-                    try {
-                        MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                    try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
+                    MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                    attacked = true;
+                }
+            } else if (target != null && target.getClass().getName().contains("class_3965")) { // Block
+                if (im != null) {
+                    Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
+                    Object side = MappingHelper.invokeMethod(target, "getSide");
+                    if (pos != null && side != null) {
+                        MappingHelper.invokeMethod(im, "attackBlock", pos, side);
                         attacked = true;
-                    } catch (Exception ignored) {}
+                    }
                 }
             }
 
-            if (!attacked) {
-                if (target != null && target.getClass().getName().contains("class_3965") && im != null) { // BlockHitResult
-                    try {
-                        Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
-                        Object side = MappingHelper.invokeMethod(target, "getSide");
-                        if (pos != null && side != null) {
-                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                            attacked = true;
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            if (!attacked) {
-                // 执行常规攻击 (doAttack)
-                String[] methods = {"method_1536", "method1536", "method_1587", "method1587", "doAttack"};
-                for (String m : methods) {
-                    try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
-                }
-            }
-
-            // 显式触发一次挥手
-            try {
-                Class<?> handClass = MappingHelper.getClass("Hand");
-                Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-                String[] swingMethods = {"method_6104", "method6104", "swingHand"};
-                for (String m : swingMethods) {
-                    try { MappingHelper.invokeMethod(player, m, mainHand); break; } catch (Exception ignored) {}
-                }
-            } catch (Exception ignored) {}
+            if (!attacked) MappingHelper.invokeMethod(client, "doAttack");
+            MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
     }
 
     private static void triggerItemUse(Object client, Object player) {
         try {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-            Class<?> handClass = MappingHelper.getClass("Hand");
-            Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-
+            Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
-            // 1. 尝试常规 doItemUse (MinecraftClient)
-            // 它会处理大多数逻辑（方块交互、使用物品）
-            String[] methods = {"method_1531", "method1531", "method_1583", "method1583", "doItemUse"};
-            for (String m : methods) {
-                try { MappingHelper.invokeMethod(client, m); break; } catch (Exception ignored) {}
-            }
+            // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
+            MappingHelper.invokeMethod(client, "doItemUse");
 
-            // 2. 补充调用 interactItem (确保钓鱼竿、药水在 doItemUse 未能成功触发时执行)
-            // 针对 1.21.4+: method_2919 是 interactItem
-            // 针对 1.21.1: method_2896 是 interactItem
-            String[] interactMethods = {"method_2896", "method2896", "method_2919", "method2919", "interactItem"};
-            for (String m : interactMethods) {
-                try { MappingHelper.invokeMethod(im, m, player, mainHand); break; } catch (Exception ignored) {}
-            }
-
-            // 3. 显式触发挥手 (提供视觉反馈)
-            try {
-                boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
-                if (!isUsing) {
-                    String[] swingMethods = {"method_6104", "method6104", "swingHand"};
-                    for (String m : swingMethods) {
-                        try { MappingHelper.invokeMethod(player, m, mainHand); break; } catch (Exception ignored) {}
+            // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
+            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+            if (target != null && target.getClass().getName().contains("class_3965")) {
+                Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
+                if (res != null) {
+                    boolean accepted = false;
+                    try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
+                        if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
                     }
+                    if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
                 }
-            } catch (Exception ignored) {}
+            }
+
+            // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
+            MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+
+            // 4. 强制触发挥手
+            boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+            if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
     }
 
