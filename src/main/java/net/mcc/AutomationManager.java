@@ -257,55 +257,76 @@ public class AutomationManager {
         try {
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239")); // HitResult
-            if (target == null) {
-                // 扫描任何 HitResult 类型的字段
-                for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
-                    if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
-                        f.setAccessible(true);
-                        target = f.get(client);
-                        if (target != null) break;
-                    }
-                }
-            }
 
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             boolean acted = false;
 
-            // 1. 原生 doAttack
-            try {
-                MappingHelper.invokeMethod(client, "doAttack");
-                acted = true;
-            } catch (Exception ignored) {}
-
-            // 2. 深度补偿
-            if (target != null) {
-                Class<?> blockHitResultClass = MappingHelper.getClass("BlockHitResult");
-                Class<?> entityHitResultClass = MappingHelper.getClass("EntityHitResult");
-
-                if (blockHitResultClass.isInstance(target) && im != null) {
+            // 1. 深度补充：显式触发 attackBlock (圈地标记的核心)
+            if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                if (im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                            acted = true;
+                            // 尝试多种方法签名以确保 1.21.11 兼容
+                            try {
+                                MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                                acted = true;
+                            } catch (Exception e) {
+                                // 暴力结构化查找: (BlockPos, Direction) -> boolean/void
+                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
+                                if (m != null) {
+                                    m.setAccessible(true);
+                                    m.invoke(im, pos, side);
+                                    acted = true;
+                                }
+                            }
                         }
                     } catch (Exception ignored) {}
                 }
+            }
 
-                if (entityHitResultClass.isInstance(target) && im != null) {
+            // 2. 原生 doAttack (触发挥手和常规攻击逻辑)
+            try {
+                MappingHelper.invokeMethod(client, "doAttack");
+                acted = true;
+            } catch (Exception e) {
+                // 暴力结构化查找 doAttack (无参)
+                try {
+                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
+                    if (m != null && m.getName().startsWith("method_15")) { // 缩小范围
+                        m.setAccessible(true);
+                        m.invoke(client);
+                        acted = true;
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // 3. 显式补偿攻击实体
+            if (!acted && target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
+                if (im != null) {
                     Object entity = MappingHelper.invokeMethod(target, "getEntity");
                     if (entity != null) {
                         try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
-                        try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
                         MappingHelper.invokeMethod(im, "attackEntity", player, entity);
                         acted = true;
                     }
                 }
             }
 
-            if (acted) MappingHelper.invokeMethod(player, "swingHand", mainHand);
+            // 4. 强制触发挥手 (确保有视觉反馈)
+            if (mainHand != null) {
+                try {
+                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
+                } catch (Exception e) {
+                    // 暴力查找 swingHand (Hand)
+                    try {
+                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(player.getClass(), null, mainHand.getClass());
+                        if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
+                    } catch (Exception ignored) {}
+                }
+            }
         } catch (Exception ignored) {}
     }
 

@@ -261,6 +261,28 @@ public class MappingHelper {
         return null;
     }
 
+    public static Method findMethodByStructure(Class<?> clazz, Class<?> returnType, Class<?>... paramTypes) {
+        if (clazz == null) return null;
+        Class<?> curr = clazz;
+        while (curr != null && curr != Object.class) {
+            for (Method m : curr.getDeclaredMethods()) {
+                if (m.getParameterCount() == paramTypes.length) {
+                    if (returnType != null && !returnType.isAssignableFrom(m.getReturnType())) continue;
+                    boolean match = true;
+                    Class<?>[] mParams = m.getParameterTypes();
+                    for (int i = 0; i < paramTypes.length; i++) {
+                        if (paramTypes[i] != null && !mParams[i].isAssignableFrom(paramTypes[i])) {
+                            match = false; break;
+                        }
+                    }
+                    if (match) return m;
+                }
+            }
+            curr = curr.getSuperclass();
+        }
+        return null;
+    }
+
     public static Object getEnumConstant(String className, String constantName) {
         try {
             Class<?> clazz = getClass(className);
@@ -313,11 +335,11 @@ public class MappingHelper {
         names.add(map(yarnName));
         names.add(yarnName);
 
-        if (yarnName.equals("doItemUse")) { names.add("method_1531"); names.add("method_1583"); }
+        if (yarnName.equals("doItemUse")) { names.add("method_1531"); names.add("method_1583"); names.add("method_1581"); }
         if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
         if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); names.add("method_2902"); }
-        if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); }
-        if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); }
+        if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
+        if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
