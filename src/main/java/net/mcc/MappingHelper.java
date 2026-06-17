@@ -13,29 +13,18 @@ import java.util.Map;
 public class MappingHelper {
     private static final Map<String, String> MAPPINGS = new HashMap<>();
 
+    public static boolean is1214 = false;
     static {
-        boolean is1214 = false;
         try {
-            // 极致鲁棒的 1.21.4+ 探测逻辑：多点交叉验证
-            Class<?> mc = null;
-            try { mc = Class.forName("net.minecraft.class_310"); } catch (Throwable ignored) {}
-            if (mc != null) {
-                try {
-                    // 特征 1: field_1755 在 1.21.1 是 Screen 对象，在 1.21.4+ 是 int (attackCooldown)
-                    Field f1755 = mc.getDeclaredField("field_1755");
-                    if (f1755.getType() == int.class) is1214 = true;
-                } catch (Throwable ignored) {}
-
-                if (!is1214) {
-                    try {
-                        // 特征 2: ClientPlayNetworkHandler.field_52609 (playerListEntries) 仅在 1.21.4+ 存在
-                        Class<?> cpnh = Class.forName("net.minecraft.class_634");
-                        cpnh.getDeclaredField("field_52609");
-                        is1214 = true;
-                    } catch (Throwable ignored) {}
-                }
-            }
-        } catch (Throwable ignored) {}
+            Class<?> mc = Class.forName("net.minecraft.class_310");
+            Field f = mc.getDeclaredField("field_1755");
+            if (f.getType() == int.class) is1214 = true;
+        } catch (Throwable t) {
+            try {
+                Class.forName("net.minecraft.class_634").getDeclaredField("field_52609");
+                is1214 = true;
+            } catch (Throwable ignored) {}
+        }
 
         // 类名映射
         MAPPINGS.put("MinecraftClient", "net/minecraft/class_310");
@@ -308,26 +297,54 @@ public class MappingHelper {
         try {
             return invokeMethodInternal(target, clazz, yarnName, args);
         } catch (NoSuchMethodException e) {
-            // 策略 1: 尝试多候选名。包含 1.21.1 和 1.21.4+ 的交叉 Intermediary。
+            // 策略 1: 多版本 Intermediary 深度候选池
             String[] fallbacks = {};
-            if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583", "method_1582"};
-            else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582", "method_1583"};
-            else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902", "method_2896", "method_2910"};
-            else if (yarnName.equals("interactItem")) fallbacks = new String[]{"method_2896", "method_2919", "method_2917"};
-            else if (yarnName.equals("attackBlock")) fallbacks = new String[]{"method_2902", "method_2910", "method_2907"};
-            else if (yarnName.equals("swingHand")) fallbacks = new String[]{"method_6104", "method_23667", "method_5973"};
-            else if (yarnName.equals("isUsingItem")) fallbacks = new String[]{"method_6115", "method_5971"};
-
-            for (String f : fallbacks) {
-                try { return invokeMethodInternal(target, clazz, f, args); } catch (Exception ignored) {}
+            if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583"};
+            else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582"};
+            else if (yarnName.equals("interactBlock")) fallbacks = new String[]{"method_2905", "method_2902"};
+            else if (yarnName.equals("interactItem")) fallbacks = new String[]{"method_2896", "method_2919"};
+            else if (yarnName.equals("attackBlock")) fallbacks = new String[]{"method_2902", "method_2910"};
+            else if (yarnName.equals("swingHand")) fallbacks = new String[]{"method_6104", "method_5973"};
+            else if (yarnName.equals("isUsingItem")) {
+                // 关键点：在 1.21.4+ 中 method_6115 的含义变更为获取手持物品堆栈，
+                // 如果在此版本误用此 ID 判断是否在使用物品，会永远返回 true（只要手上有东西），导致进食/药水失效。
+                fallbacks = is1214 ? new String[]{"method_5971"} : new String[]{"method_6115"};
             }
 
-            // 策略 2: 结构化特征深度搜索
-            try {
-                Method structural = findMethodStructural(clazz, yarnName, args);
-                if (structural != null) return structural.invoke(target, args);
-            } catch (Exception ignored) {}
+            for (String f : fallbacks) {
+                try { return invokeMethodInternal(target, clazz, f, args); } catch (Throwable ignored) {}
+            }
 
+            // 策略 2: 极致结构指纹搜索 (针对 1.21.11 签名漂移)
+            for (Method m : clazz.getDeclaredMethods()) {
+                if (m.getParameterCount() != args.length) continue;
+                Class<?>[] pTypes = m.getParameterTypes();
+                boolean match = true;
+                for (int i = 0; i < args.length; i++) {
+                    if (args[i] == null) continue;
+                    Class<?> p = pTypes[i];
+                    Class<?> a = args[i].getClass();
+                    if (p.isPrimitive()) {
+                        if (p == int.class && a == Integer.class) continue;
+                        if (p == boolean.class && a == Boolean.class) continue;
+                        match = false; break;
+                    } else if (!p.isAssignableFrom(a)) {
+                        String pn = p.getName();
+                        if (pn.startsWith("net.minecraft") || pn.contains("class_") || pn.equals("java.lang.Object")) continue;
+                        match = false; break;
+                    }
+                }
+                if (!match) continue;
+
+                Class<?> ret = m.getReturnType();
+                if (yarnName.equals("doItemUse") || yarnName.equals("doAttack") || yarnName.equals("swingHand")) {
+                    if (ret == void.class) return m.invoke(target, args);
+                } else if (yarnName.equals("isUsingItem")) {
+                    if (ret == boolean.class) return m.invoke(target, args);
+                } else if (yarnName.equals("interactItem") || yarnName.equals("interactBlock")) {
+                    if (ret != void.class && ret != boolean.class) return m.invoke(target, args);
+                }
+            }
             throw e;
         }
     }
