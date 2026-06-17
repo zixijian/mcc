@@ -16,15 +16,20 @@ public class MappingHelper {
     static {
         boolean is1214 = false;
         try {
-            // 探测 1.21.4+: ClientPlayNetworkHandler.playerListEntries 从 field_3695 变为 field_52609
-            Class<?> cpnh = Class.forName("net.minecraft.class_634");
+            // 探测 1.21.4+: MinecraftClient.field_1755 从 Screen 变为 int (attackCooldown)
+            Class<?> mcClass = Class.forName("net.minecraft.class_310");
+            java.lang.reflect.Field f1755 = mcClass.getDeclaredField("field_1755");
+            if (f1755.getType() == int.class) {
+                is1214 = true;
+            }
+        } catch (Throwable ignored) {
             try {
+                // 回退方案: 探测 ClientPlayNetworkHandler.playerListEntries
+                Class<?> cpnh = Class.forName("net.minecraft.class_634");
                 cpnh.getDeclaredField("field_52609");
                 is1214 = true;
-            } catch (NoSuchFieldException e) {
-                is1214 = false;
-            }
-        } catch (Throwable ignored) {}
+            } catch (Throwable ignored2) {}
+        }
 
         // 类名映射
         MAPPINGS.put("MinecraftClient", "net/minecraft/class_310");
@@ -53,6 +58,8 @@ public class MappingHelper {
         MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
+        MAPPINGS.put("ActionResult", "net/minecraft/class_1269");
+        MAPPINGS.put("UseAction", "net/minecraft/class_1839");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -78,9 +85,11 @@ public class MappingHelper {
         MAPPINGS.put("gameProfile", "field_3944");
         MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
         MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
+        MAPPINGS.put("fishHook", is1214 ? "field_54930" : "field_7500");
         MAPPINGS.put("ITEM", "field_41175");
         MAPPINGS.put("lastAttackedTicks", "field_6010");
         MAPPINGS.put("hurtResistantTime", "field_6008");
+        MAPPINGS.put("timesPressed", "field_1652");
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
         MAPPINGS.put("MAIN_HAND", "field_5808");
@@ -115,15 +124,20 @@ public class MappingHelper {
         MAPPINGS.put("getMaxDamage", "method_7936");
         MAPPINGS.put("getDamage", "method_7919");
         MAPPINGS.put("requestRespawn", "method_7331");
-        MAPPINGS.put("doAttack", "method_1536");
-        MAPPINGS.put("attackEntity", "method_2918");
+        MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
+        MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
         MAPPINGS.put("interactBlock", is1214 ? "method_2896" : "method_2905");
+        MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("swingHand", "method_6104");
         MAPPINGS.put("getEntity", "method_17770");
+        MAPPINGS.put("getBlockPos", "method_17777");
+        MAPPINGS.put("getSide", "method_17778");
+        MAPPINGS.put("isAccepted", "method_23665");
         MAPPINGS.put("stopUsingItem", "method_2907");
-        MAPPINGS.put("isUsingItem", "method_6115");
+        MAPPINGS.put("isUsingItem", is1214 ? "method_5971" : "method_6115");
+        MAPPINGS.put("getUseAction", "method_7951");
         MAPPINGS.put("getYaw", "method_36454");
         MAPPINGS.put("getPitch", "method_36455");
         MAPPINGS.put("setYaw", "method_36456");
