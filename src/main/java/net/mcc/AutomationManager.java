@@ -170,11 +170,14 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
+            // 健壮的当前屏幕检测
             Object currentScreen = null;
             try {
-                Class<?> screenClass = MappingHelper.getClass("Screen");
-                currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
+                currentScreen = MappingHelper.getFieldValue(client, "currentScreen", null);
+                if (currentScreen != null) {
+                    // 允许在聊天界面操作
+                    if (currentScreen.getClass().getName().toLowerCase().contains("chat")) currentScreen = null;
+                }
             } catch (Exception ignored) {}
             if (currentScreen != null) return;
 
@@ -254,30 +257,20 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            Object target = null;
-            String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-            for (String f : targetFields) {
-                try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
-            }
+            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+            if (target == null) target = MappingHelper.getFieldValue(client, "cursorTarget", null);
 
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             boolean attacked = false;
 
             if (target != null && im != null) {
                 if (target.getClass().getName().contains("class_3966")) { // EntityHitResult
-                    Object entity = null;
-                    try { entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
-
+                    Object entity = MappingHelper.invokeMethod(target, "getEntity");
                     if (entity != null) {
-                        // 移除伤害无敌帧
-                        try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {} // hurtResistantTime
-                        try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {} // hurtTime
-
-                        // 直接调用 interactionManager.attackEntity
-                        try {
-                            MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                            attacked = true;
-                        } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
+                        MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                        attacked = true;
                     }
                 } else if (target.getClass().getName().contains("class_3965")) { // BlockHitResult
                     // 1.21.11+ 木斧左键选点兼容
@@ -285,13 +278,11 @@ public class AutomationManager {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                        // attacked = true; // 不设置 true，让 doAttack 继续执行以保证完整逻辑
                     } catch (Exception ignored) {}
                 }
             }
 
             if (!attacked) {
-                // 执行常规攻击 (doAttack)
                 try { MappingHelper.invokeMethod(client, "doAttack"); } catch (Exception ignored) {}
             }
 
@@ -306,30 +297,22 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            boolean success = false;
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Class<?> handClass = MappingHelper.getClass("Hand");
             Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
-
             if (mainHand == null || im == null) return;
 
-            // 1. 针对方块交互的优化：检查 crosshairTarget
-            Object target = null;
-            String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-            for (String f : targetFields) {
-                try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
-            }
+            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+            if (target == null) target = MappingHelper.getFieldValue(client, "cursorTarget", null);
 
+            boolean success = false;
             if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
                 try {
                     Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) {
-                        success = true;
-                    }
+                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) success = true;
                 } catch (Exception ignored) {}
             }
 
-            // 2. 尝试常规 doItemUse (MinecraftClient) - 支持钓鱼、丢药水等
             if (!success) {
                 try {
                     MappingHelper.invokeMethod(client, "doItemUse");
@@ -337,13 +320,10 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 3. Fallback: interactItem (InteractionManager)
             if (!success) {
                 try {
                     Object res = MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) {
-                        success = true;
-                    }
+                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) success = true;
                 } catch (Exception ignored) {}
             }
 

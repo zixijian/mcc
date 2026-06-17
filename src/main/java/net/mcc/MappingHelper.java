@@ -77,6 +77,7 @@ public class MappingHelper {
         MAPPINGS.put("totalExperience", "field_7521");
         MAPPINGS.put("selectedSlot", "field_7545");
         MAPPINGS.put("currentScreen", is1214 ? "field_1757" : "field_1755");
+        MAPPINGS.put("cursorTarget", "field_1765");
         MAPPINGS.put("main", "field_7547");
         MAPPINGS.put("input", "field_3913");
         MAPPINGS.put("attackKey", "field_1904");
@@ -303,6 +304,17 @@ public class MappingHelper {
         String mappedName = map(yarnName);
         String altMappedName = mappedName.replace("_", "");
 
+        // 特殊处理 ActionResult.isAccepted
+        if ("isAccepted".equals(yarnName) && obj != null) {
+            if (obj.getClass().isEnum()) {
+                try {
+                    String name = ((Enum<?>) obj).name();
+                    return "SUCCESS".equals(name) || "CONSUME".equals(name) || "SUCCESS_NO_ITEM_USED".equals(name);
+                } catch (Exception ignored) {}
+            }
+            // 如果是 1.21.4+ 的 Record 或其它类型，且没有该方法，尝试结构化查找
+        }
+
         // 针对 Record 类型
         if (clazz.isRecord()) {
             for (java.lang.reflect.RecordComponent rc : clazz.getRecordComponents()) {
@@ -377,7 +389,51 @@ public class MappingHelper {
             curr = curr.getSuperclass();
         }
 
+        // 最后的结构化兜底：按参数数量和类型匹配
+        try {
+            Method m = findMethodStructural(clazz, mappedName, yarnName, args);
+            if (m != null) {
+                m.setAccessible(true);
+                return m.invoke(obj, args);
+            }
+        } catch (Exception ignored) {}
+
         throw new NoSuchMethodException(yarnName + " (mapped: " + mappedName + ") in " + clazz.getName());
+    }
+
+    private static Method findMethodStructural(Class<?> clazz, String mapped, String yarn, Object[] args) {
+        Class<?> curr = clazz;
+        while (curr != null && curr != Object.class) {
+            for (Method m : curr.getDeclaredMethods()) {
+                if (m.getParameterCount() == args.length) {
+                    String n = m.getName();
+                    // 更加激进的匹配：只要参数数量一致，且名字包含 method_ 或者是我们要找的名字
+                    if (n.equals(mapped) || n.equals(yarn) || n.startsWith("method_")) {
+                        boolean match = true;
+                        Class<?>[] pTypes = m.getParameterTypes();
+                        for (int i = 0; i < args.length; i++) {
+                            if (args[i] != null) {
+                                Class<?> pType = pTypes[i];
+                                Class<?> aType = args[i].getClass();
+                                if (pType.isPrimitive()) {
+                                    if (pType == int.class && !(aType == Integer.class || Number.class.isAssignableFrom(aType))) { match = false; break; }
+                                    if (pType == boolean.class && aType != Boolean.class) { match = false; break; }
+                                    if (pType == float.class && !(aType == Float.class || Number.class.isAssignableFrom(aType))) { match = false; break; }
+                                    if (pType == long.class && !(aType == Long.class || Number.class.isAssignableFrom(aType))) { match = false; break; }
+                                } else if (!pType.isAssignableFrom(aType)) {
+                                    // 模糊匹配：如果参数是 class_ 开头的（混淆类），且我们的参数也是混淆类或特定的类，尝试继续
+                                    if (pType.getName().contains(".class_") && aType.getName().contains(".class_")) continue;
+                                    match = false; break;
+                                }
+                            }
+                        }
+                        if (match) return m;
+                    }
+                }
+            }
+            curr = curr.getSuperclass();
+        }
+        return null;
     }
 
     public static Object getRegistry(String name) {
