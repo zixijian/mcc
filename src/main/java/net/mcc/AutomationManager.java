@@ -309,11 +309,12 @@ public class AutomationManager {
                     Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
                     if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) {
                         success = true;
+                        // 强制调用一次 doItemUse 以同步某些动作，防止幽灵方块
+                        try { MappingHelper.invokeMethod(client, "doItemUse"); } catch (Exception ignored) {}
                     }
                 } catch (Exception ignored) {}
             }
 
-            // 特殊优化：如果是为了防止幽灵方块，我们可以在 interactBlock 之后尝试强制同步或 doItemUse
             if (!success) {
                 try {
                     MappingHelper.invokeMethod(client, "doItemUse");

@@ -130,7 +130,7 @@ public class MappingHelper {
         MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
-        MAPPINGS.put("interactBlock", is1214 ? "method_2902" : "method_2905");
+        MAPPINGS.put("interactBlock", is1214 ? "method_2896" : "method_2905");
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("swingHand", "method_6104");
         MAPPINGS.put("getEntity", "method_17770");
