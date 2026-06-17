@@ -308,18 +308,30 @@ public class MappingHelper {
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
         if (yarnName.equals("swingHand")) { names.add("method_6104"); }
+        if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
+        if (yarnName.equals("getString")) { names.add("method_10851"); }
+        if (yarnName.equals("getBlockPos")) { names.add("method_17777"); }
+        if (yarnName.equals("getSide")) { names.add("method_17778"); }
+        if (yarnName.equals("getItem")) { names.add("method_7909"); }
+        if (yarnName.equals("getCount")) { names.add("method_7947"); }
+        if (yarnName.equals("isEmpty")) { names.add("method_7960"); }
+        if (yarnName.equals("getMaxDamage")) { names.add("method_7936"); }
+        if (yarnName.equals("getDamage")) { names.add("method_7919"); }
 
         for (String name : names) {
             try { return invokeMethodInternal(targetObj, clazz, name, args); } catch (NoSuchMethodException ignored) {}
         }
 
-        try {
-            Method m = findMethodStructural(clazz, args);
-            if (m != null) {
-                m.setAccessible(true);
-                return m.invoke(targetObj, convertArgs(m.getParameterTypes(), args));
-            }
-        } catch (Exception ignored) {}
+        // 仅在有参数时允许结构化搜索，防止无参混淆 (如将 getItem 误判为 isEmpty)
+        if (args.length > 0) {
+            try {
+                Method m = findMethodStructural(clazz, args);
+                if (m != null) {
+                    m.setAccessible(true);
+                    return m.invoke(targetObj, convertArgs(m.getParameterTypes(), args));
+                }
+            } catch (Exception ignored) {}
+        }
 
         throw new NoSuchMethodException(yarnName + " in " + clazz.getName());
     }

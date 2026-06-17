@@ -138,36 +138,52 @@ public class InventoryManager {
         Object item = MappingHelper.invokeMethod(stack, "getItem");
 
         String id = "minecraft:air";
+        String name = "";
         try {
-            // 策略 1: item.getRegistryEntry().registryKey().getValue().toString()
-            try {
-                Object entry = MappingHelper.invokeMethod(item, "getRegistryEntry");
-                Object key = MappingHelper.invokeMethod(entry, "registryKey");
-                Object value = MappingHelper.invokeMethod(key, "getValue");
-                id = value.toString();
-            } catch (Exception ignored) {}
-
-            // 策略 2: Registries.ITEM.getId(item)
-            if (id.contains("air")) {
-                Object registry = MappingHelper.getRegistry("ITEM");
-                if (registry != null) {
-                    Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
-                    if (identifier != null) id = identifier.toString();
+            // 策略 1: Registries.ITEM.getId(item) (获取 ID: minecraft:stone)
+            Object registry = MappingHelper.getRegistry("ITEM");
+            if (registry != null) {
+                Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
+                if (identifier != null) {
+                    String sid = identifier.toString();
+                    if (!sid.isEmpty() && !sid.equals("minecraft:air")) id = sid;
                 }
             }
 
-            // 策略 3: toString
-            if (id.contains("air")) {
-                id = item.toString();
+            // 策略 2: 获取物品显示名称 (getName -> getString)
+            try {
+                Object text = MappingHelper.invokeMethod(item, "getName");
+                if (text != null) {
+                    String sname = (String) MappingHelper.invokeMethod(text, "getString");
+                    if (sname != null && !sname.isEmpty()) name = sname;
+                }
+            } catch (Exception ignored) {}
+
+            // 策略 3: Fallback ID (getRegistryEntry)
+            if (id.equals("minecraft:air")) {
+                try {
+                    Object entry = MappingHelper.invokeMethod(item, "getRegistryEntry");
+                    Object key = MappingHelper.invokeMethod(entry, "registryKey");
+                    Object value = MappingHelper.invokeMethod(key, "getValue");
+                    id = value.toString();
+                } catch (Exception ignored) {}
+            }
+
+            // 策略 4: 最终 Fallback (toString, 排除混淆地址)
+            if (id.equals("minecraft:air") || id.startsWith("[")) {
+                String sid = item.toString();
+                if (!sid.isEmpty() && !sid.startsWith("[")) id = sid;
             }
         } catch (Exception e) {
             id = "err:" + e.getMessage();
         }
 
+        String displayName = name.isEmpty() ? id : (id.equals("minecraft:air") ? name : id + " (" + name + ")");
+
         int maxDmg = ((Number) MappingHelper.invokeMethod(stack, "getMaxDamage")).intValue();
         int dmg = ((Number) MappingHelper.invokeMethod(stack, "getDamage")).intValue();
         String dur = maxDmg > 0 ? String.format(" (%d/%d)", maxDmg - dmg, maxDmg) : "";
 
-        CommandDispatcher.addFeedback(String.format("Slot %d：§e%s §fx%d%s", slot, id, count, dur));
+        CommandDispatcher.addFeedback(String.format("Slot %d：§e%s §fx%d%s", slot, displayName, count, dur));
     }
 }

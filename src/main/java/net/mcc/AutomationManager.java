@@ -250,29 +250,45 @@ public class AutomationManager {
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-            boolean attacked = false;
+            boolean acted = false;
 
-            if (target != null && target.getClass().getName().contains("class_3966")) { // Entity
-                Object entity = MappingHelper.invokeMethod(target, "getEntity");
-                if (entity != null && im != null) {
-                    try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
-                    try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
-                    MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                    attacked = true;
-                }
-            } else if (target != null && target.getClass().getName().contains("class_3965")) { // Block
+            // 1. 优先尝试原生 doAttack (处理常规攻击、方块破坏起始)
+            try {
+                MappingHelper.invokeMethod(client, "doAttack");
+                acted = true;
+            } catch (Exception ignored) {}
+
+            // 2. 深度补偿：如果准星指向方块，显式调用 attackBlock (兼容木斧等插件)
+            if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
                 if (im != null) {
-                    Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
-                    Object side = MappingHelper.invokeMethod(target, "getSide");
-                    if (pos != null && side != null) {
-                        MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                        attacked = true;
-                    }
+                    try {
+                        Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
+                        Object side = MappingHelper.invokeMethod(target, "getSide");
+                        if (pos != null && side != null) {
+                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            acted = true;
+                        }
+                    } catch (Exception ignored) {}
                 }
             }
 
-            if (!attacked) MappingHelper.invokeMethod(client, "doAttack");
-            MappingHelper.invokeMethod(player, "swingHand", mainHand);
+            // 3. 深度补偿：如果准星指向实体，显式调用 attackEntity
+            if (target != null && target.getClass().getName().contains("class_3966")) { // EntityHitResult
+                if (im != null) {
+                    try {
+                        Object entity = MappingHelper.invokeMethod(target, "getEntity");
+                        if (entity != null) {
+                            try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
+                            try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
+                            MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                            acted = true;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            // 4. 强制触发挥手
+            if (acted) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
     }
 
