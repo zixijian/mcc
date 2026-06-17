@@ -288,8 +288,7 @@ public class AutomationManager {
 
             // 显式触发一次挥手
             try {
-                Class<?> handClass = MappingHelper.getClass("Hand");
-                Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
+                Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
                 MappingHelper.invokeMethod(player, "swingHand", mainHand);
             } catch (Exception ignored) {}
         } catch (Exception ignored) {}
@@ -298,8 +297,7 @@ public class AutomationManager {
     private static void triggerItemUse(Object client, Object player) {
         try {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-            Class<?> handClass = MappingHelper.getClass("Hand");
-            Object mainHand = MappingHelper.getFieldValue(null, "MAIN_HAND", handClass);
+            Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
@@ -309,10 +307,13 @@ public class AutomationManager {
             if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
                 try {
                     Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) success = true;
+                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) {
+                        success = true;
+                    }
                 } catch (Exception ignored) {}
             }
 
+            // 特殊优化：如果是为了防止幽灵方块，我们可以在 interactBlock 之后尝试强制同步或 doItemUse
             if (!success) {
                 try {
                     MappingHelper.invokeMethod(client, "doItemUse");

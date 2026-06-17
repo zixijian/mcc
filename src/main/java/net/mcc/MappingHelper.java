@@ -94,6 +94,7 @@ public class MappingHelper {
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
         MAPPINGS.put("MAIN_HAND", "field_5808");
+        MAPPINGS.put("OFF_HAND", "field_5810");
 
         // 方法映射 (Yarn -> Intermediary)
         MAPPINGS.put("getInstance", "method_1551");
@@ -129,7 +130,7 @@ public class MappingHelper {
         MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
-        MAPPINGS.put("interactBlock", is1214 ? "method_2896" : "method_2905");
+        MAPPINGS.put("interactBlock", is1214 ? "method_2902" : "method_2905");
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("swingHand", "method_6104");
         MAPPINGS.put("getEntity", "method_17770");
@@ -273,6 +274,7 @@ public class MappingHelper {
     }
 
     public static void setFieldValue(Object obj, String yarnName, Object value) throws Exception {
+        if (obj == null) return;
         Field f = findField(obj.getClass(), yarnName);
         f.setAccessible(true);
         if (f.getType() == boolean.class && value instanceof Boolean) {
@@ -289,11 +291,24 @@ public class MappingHelper {
     }
 
     public static Object invokeMethod(Object obj, String yarnName, Object... args) throws Exception {
-        if (obj == null) return null;
+        if (obj == null) {
+            // 尝试查找静态方法
+            return null;
+        }
         if (obj instanceof Class) {
             return invokeMethod(null, (Class<?>) obj, yarnName, args);
         }
         return invokeMethod(obj, obj.getClass(), yarnName, args);
+    }
+
+    public static Object getEnumConstant(String className, String constantName) {
+        try {
+            Class<?> clazz = getClass(className);
+            for (Object obj : clazz.getEnumConstants()) {
+                if (((Enum<?>) obj).name().equals(constantName)) return obj;
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     public static Object invokeStaticMethod(Class<?> clazz, String yarnName, Object... args) throws Exception {
@@ -306,13 +321,21 @@ public class MappingHelper {
 
         // 特殊处理 ActionResult.isAccepted
         if ("isAccepted".equals(yarnName) && obj != null) {
-            if (obj.getClass().isEnum()) {
-                try {
+            try {
+                if (obj.getClass().isEnum()) {
                     String name = ((Enum<?>) obj).name();
                     return "SUCCESS".equals(name) || "CONSUME".equals(name) || "SUCCESS_NO_ITEM_USED".equals(name);
+                }
+                // 1.21.4+ Record/Class fallback
+                try {
+                    Method m = obj.getClass().getMethod("isAccepted");
+                    return (boolean) m.invoke(obj);
                 } catch (Exception ignored) {}
-            }
-            // 如果是 1.21.4+ 的 Record 或其它类型，且没有该方法，尝试结构化查找
+                try {
+                    Method m = obj.getClass().getMethod("method_23665");
+                    return (boolean) m.invoke(obj);
+                } catch (Exception ignored) {}
+            } catch (Exception ignored) {}
         }
 
         // 针对 Record 类型
