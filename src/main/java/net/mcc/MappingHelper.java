@@ -16,13 +16,19 @@ public class MappingHelper {
     public static boolean is1214 = false;
     static {
         try {
-            Class<?> mc = Class.forName("net.minecraft.class_310");
-            Field f = mc.getDeclaredField("field_1755");
-            if (f.getType() == int.class) is1214 = true;
+            // 更稳健的版本探测
+            Class<?> cpnh = Class.forName("net.minecraft.class_634");
+            try {
+                cpnh.getDeclaredField("field_52609");
+                is1214 = true;
+            } catch (NoSuchFieldException e) {
+                is1214 = false;
+            }
         } catch (Throwable t) {
             try {
-                Class.forName("net.minecraft.class_634").getDeclaredField("field_52609");
-                is1214 = true;
+                Class<?> mc = Class.forName("net.minecraft.class_310");
+                Field f = mc.getDeclaredField("field_1755"); // 1.21.1: Screen, 1.21.4+: int
+                if (f.getType() == int.class) is1214 = true;
             } catch (Throwable ignored) {}
         }
 
@@ -297,7 +303,7 @@ public class MappingHelper {
         try {
             return invokeMethodInternal(target, clazz, yarnName, args);
         } catch (NoSuchMethodException e) {
-            // 策略 1: 多版本 Intermediary 深度候选池
+            // 策略 1: 尝试所有可能的 Intermediary 候选名
             String[] fallbacks = {};
             if (yarnName.equals("doItemUse")) fallbacks = new String[]{"method_1531", "method_1583"};
             else if (yarnName.equals("doAttack")) fallbacks = new String[]{"method_1536", "method_1582"};
