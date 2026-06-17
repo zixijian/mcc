@@ -338,21 +338,26 @@ public class AutomationManager {
             try { target = MappingHelper.getFieldValue(client, "crosshairTarget", null); } catch (Exception ignored) {}
             Object hand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 尝试显式方块攻击补丁 (针对 1.21.11 木斧领地标记)
+            boolean done = false;
+            // 1. 优先方块攻击补丁 (针对 1.21.11 木斧领地标记)
             if (target != null && im != null && MappingHelper.isInstance(target, "BlockHitResult")) {
                 try {
                     Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                     Object side = MappingHelper.invokeMethod(target, "getSide");
                     if (pos != null && side != null) {
-                        MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                        Object res = MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                        // 如果显式攻击返回真或成功标识，拦截后续 doAttack
+                        if (res instanceof Boolean && (Boolean)res) done = true;
                     }
                 } catch (Exception ignored) {}
             }
 
-            // 2. 核心原生 doAttack (处理实体攻击、连击逻辑及 1.21.x 常规交互)
-            try { MappingHelper.invokeMethod(client, "doAttack"); } catch (Exception ignored) {}
+            // 2. 执行原生攻击逻辑
+            if (!done) {
+                try { MappingHelper.invokeMethod(client, "doAttack"); } catch (Exception ignored) {}
+            }
 
-            // 3. 确保挥手
+            // 3. 反馈
             if (hand != null) {
                 try { MappingHelper.invokeMethod(player, "swingHand", hand); } catch (Exception ignored) {}
             }
@@ -368,30 +373,27 @@ public class AutomationManager {
 
             if (hand == null) return;
 
-            // 严禁在“使用中”重复触发，否则进食/拉弓进度会瞬间归零
+            // 如果已经在使用物品（进食、拉弓），严禁再次触发
             try { if ((boolean) MappingHelper.invokeMethod(player, "isUsingItem")) return; } catch (Exception ignored) {}
 
-            // 采用“原生主导 + 智能接口补偿”策略
-
-            // A. 方块放置补丁 (仅在指向方块时优先尝试)
-            if (target != null && MappingHelper.isInstance(target, "BlockHitResult") && im != null) {
-                try {
-                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, hand, target);
-                    if (res != null && !res.toString().contains("PASS")) return;
-                } catch (Exception ignored) {}
-            }
-
-            // B. 原生入口 (处理火箭、喷溅药水、及多数常规物品)
+            // A. 原生入口：最稳入口
             try { MappingHelper.invokeMethod(client, "doItemUse"); } catch (Exception ignored) {}
 
-            // C. 进食/药水补偿补丁 (针对某些版本原生入口无法触发饮食的情况)
+            // B. 接口补偿：针对 1.21.11 饮食药水失效
             try {
                 if (!(boolean) MappingHelper.invokeMethod(player, "isUsingItem") && im != null) {
-                    MappingHelper.invokeMethod(im, "interactItem", player, hand);
+                    // 如果指向方块，尝试方块交互补丁
+                    if (target != null && MappingHelper.isInstance(target, "BlockHitResult")) {
+                        MappingHelper.invokeMethod(im, "interactBlock", player, hand, target);
+                    }
+                    // 物品交互补丁
+                    if (!(boolean) MappingHelper.invokeMethod(player, "isUsingItem")) {
+                        MappingHelper.invokeMethod(im, "interactItem", player, hand);
+                    }
                 }
             } catch (Exception ignored) {}
 
-            // D. 确保视觉反馈
+            // C. 视觉补丁
             try {
                 if (!(boolean) MappingHelper.invokeMethod(player, "isUsingItem")) {
                     MappingHelper.invokeMethod(player, "swingHand", hand);

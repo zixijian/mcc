@@ -97,8 +97,7 @@ public class MappingHelper {
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
         MAPPINGS.put("MAIN_HAND", "field_5808");
-        MAPPINGS.put("interactionManager", "field_1761");
-        MAPPINGS.put("fishHook", "field_7500");
+        MAPPINGS.put("fishHook", is1214 ? "field_54930" : "field_7500");
 
         // 方法映射 (Yarn -> Intermediary)
         MAPPINGS.put("getInstance", "method_1551");
@@ -138,12 +137,12 @@ public class MappingHelper {
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
         MAPPINGS.put("interactBlock", is1214 ? "method_2902" : "method_2905");
-        MAPPINGS.put("swingHand", "method_6104");
+        MAPPINGS.put("swingHand", is1214 ? "method_5973" : "method_6104");
         MAPPINGS.put("getEntity", "method_17770");
         MAPPINGS.put("getBlockPos", "method_17777");
         MAPPINGS.put("getSide", "method_17778");
         MAPPINGS.put("stopUsingItem", "method_2907");
-        MAPPINGS.put("isUsingItem", "method_6115");
+        MAPPINGS.put("isUsingItem", is1214 ? "method_5971" : "method_6115");
         MAPPINGS.put("getYaw", "method_36454");
         MAPPINGS.put("getPitch", "method_36455");
         MAPPINGS.put("setYaw", "method_36456");
