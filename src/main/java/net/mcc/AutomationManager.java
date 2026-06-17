@@ -278,6 +278,7 @@ public class AutomationManager {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                        attacked = true;
                     } catch (Exception ignored) {}
                 }
             }
@@ -296,6 +297,7 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
+            // 针对不同场景优化交互链
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
@@ -304,17 +306,15 @@ public class AutomationManager {
             if (target == null) target = MappingHelper.getFieldValue(client, "cursorTarget", null);
 
             boolean success = false;
+            // 1. 尝试针对方块的交互 (放置、点击)
             if (target != null && target.getClass().getName().contains("class_3965")) { // BlockHitResult
                 try {
                     Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) {
-                        success = true;
-                        // 强制调用一次 doItemUse 以同步某些动作，防止幽灵方块
-                        try { MappingHelper.invokeMethod(client, "doItemUse"); } catch (Exception ignored) {}
-                    }
+                    if (res != null && (boolean) MappingHelper.invokeMethod(res, "isAccepted")) success = true;
                 } catch (Exception ignored) {}
             }
 
+            // 2. 尝试常规物品使用 (钓鱼抛竿、丢药水、食物)
             if (!success) {
                 try {
                     MappingHelper.invokeMethod(client, "doItemUse");
@@ -322,6 +322,7 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
+            // 3. 兜底交互
             if (!success) {
                 try {
                     Object res = MappingHelper.invokeMethod(im, "interactItem", player, mainHand);

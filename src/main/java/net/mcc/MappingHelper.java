@@ -16,20 +16,15 @@ public class MappingHelper {
     static {
         boolean is1214 = false;
         try {
-            // 探测 1.21.4+: MinecraftClient.field_1755 从 Screen 变为 int (attackCooldown)
-            Class<?> mcClass = Class.forName("net.minecraft.class_310");
-            java.lang.reflect.Field f1755 = mcClass.getDeclaredField("field_1755");
-            if (f1755.getType() == int.class) {
-                is1214 = true;
-            }
-        } catch (Throwable ignored) {
+            // 探测 1.21.4+: ClientPlayNetworkHandler.playerListEntries 从 field_3695 变为 field_52609
+            Class<?> cpnh = Class.forName("net.minecraft.class_634");
             try {
-                // 回退方案: 探测 ClientPlayNetworkHandler.playerListEntries
-                Class<?> cpnh = Class.forName("net.minecraft.class_634");
                 cpnh.getDeclaredField("field_52609");
                 is1214 = true;
-            } catch (Throwable ignored2) {}
-        }
+            } catch (NoSuchFieldException e) {
+                is1214 = false;
+            }
+        } catch (Throwable ignored) {}
 
         // 类名映射
         MAPPINGS.put("MinecraftClient", "net/minecraft/class_310");
@@ -60,6 +55,8 @@ public class MappingHelper {
         MAPPINGS.put("Screen", "net/minecraft/class_437");
         MAPPINGS.put("ActionResult", "net/minecraft/class_1269");
         MAPPINGS.put("UseAction", "net/minecraft/class_1839");
+        MAPPINGS.put("BlockPos", "net/minecraft/class_2338");
+        MAPPINGS.put("Direction", "net/minecraft/class_2350");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -130,7 +127,7 @@ public class MappingHelper {
         MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
-        MAPPINGS.put("interactBlock", is1214 ? "method_2896" : "method_2905");
+        MAPPINGS.put("interactBlock", "method_2896");
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("swingHand", "method_6104");
         MAPPINGS.put("getEntity", "method_17770");
