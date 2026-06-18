@@ -178,15 +178,11 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 健壮的当前屏幕检测：允许在聊天界面时运行自动化
+            // 健壮的当前屏幕检测：任何屏幕打开时停止自动化 (包括聊天框)
             Object currentScreen = null;
             try {
                 Class<?> screenClass = MappingHelper.getClass("Screen");
                 currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
-                if (currentScreen != null) {
-                    Class<?> chatScreenClass = MappingHelper.getClass("ChatScreen");
-                    if (chatScreenClass.isInstance(currentScreen)) currentScreen = null;
-                }
             } catch (Exception ignored) {}
             if (currentScreen != null) return;
 
@@ -259,20 +255,6 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            boolean wasSprinting = false;
-            boolean wasOnGround = true;
-            try { wasSprinting = (boolean) MappingHelper.getFieldValue(player, "sprinting", null); } catch (Exception ignored) {}
-            try { wasOnGround = (boolean) MappingHelper.getFieldValue(player, "onGround", null); } catch (Exception ignored) {}
-
-            // 强制非疾跑且在地面，以触发挥扫 (Sweeping Edge)
-            if (wasSprinting) {
-                try { MappingHelper.setFieldValue(player, "sprinting", false); } catch (Exception ignored) {}
-                try { MappingHelper.invokeMethod(player, "setSprinting", false); } catch (Exception ignored) {}
-            }
-            if (!wasOnGround) {
-                try { MappingHelper.setFieldValue(player, "onGround", true); } catch (Exception ignored) {}
-            }
-
             // 预先重置冷却和攻击计息
             resetAttackCooldown(client);
 
@@ -282,7 +264,7 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 针对 1.21.11 等环境的木斧标记补偿
+            // 1. 针对 1.21.11 等环境的木斧标记补偿 (核心：必须在 doAttack 之前或完全替代它)
             Class<?> blockHitResultClass = null;
             try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
             if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
@@ -291,11 +273,17 @@ public class AutomationManager {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
+                            // 1.21.11 下，直接通过 interactionManager 的私有方法或 attackBlock 模拟左键
                             try {
                                 MappingHelper.invokeMethod(im, "attackBlock", pos, side);
                             } catch (Exception e) {
-                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
-                                if (m != null) { m.setAccessible(true); m.invoke(im, pos, side); }
+                                // 备选：尝试带有三个参数的签名 (BlockPos, Direction, int)
+                                try {
+                                    MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0);
+                                } catch (Exception e2) {
+                                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
+                                    if (m != null) { m.setAccessible(true); m.invoke(im, pos, side); }
+                                }
                             }
                         }
                     } catch (Exception ignored) {}
@@ -349,13 +337,18 @@ public class AutomationManager {
                 }
             }
 
-            // 4. 强制视觉反馈：重置挥手动画以支持高频
+            // 4. 强制视觉反馈：重置挥手动画以支持高频 (仅在需要时重置，防止动画过快看起来不顺畅)
             if (mainHand != null) {
                 try {
-                    try { MappingHelper.setFieldValue(player, "handSwinging", false); } catch (Exception ignored) {}
-                    try { MappingHelper.setFieldValue(player, "field_6277", false); } catch (Exception ignored) {}
-                    try { MappingHelper.setFieldValue(player, "handSwingTicks", 0); } catch (Exception ignored) {}
-                    try { MappingHelper.setFieldValue(player, "field_6259", 0); } catch (Exception ignored) {}
+                    boolean isSwinging = false;
+                    try { isSwinging = (boolean) MappingHelper.getFieldValue(player, "handSwinging", null); } catch (Exception ignored) {}
+
+                    if (isSwinging) {
+                        try { MappingHelper.setFieldValue(player, "handSwinging", false); } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(player, "field_6277", false); } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(player, "handSwingTicks", 0); } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(player, "field_6259", 0); } catch (Exception ignored) {}
+                    }
 
                     MappingHelper.invokeMethod(player, "swingHand", mainHand);
                 } catch (Exception e) {
@@ -365,15 +358,6 @@ public class AutomationManager {
                         if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
                     } catch (Exception ignored) {}
                 }
-            }
-
-            // 恢复疾跑和地面状态
-            if (wasSprinting) {
-                try { MappingHelper.setFieldValue(player, "sprinting", true); } catch (Exception ignored) {}
-                try { MappingHelper.invokeMethod(player, "setSprinting", true); } catch (Exception ignored) {}
-            }
-            if (!wasOnGround) {
-                try { MappingHelper.setFieldValue(player, "onGround", false); } catch (Exception ignored) {}
             }
 
             // 攻击后再次确保冷却重置，防止原生逻辑在 doAttack 结尾重新设置冷却
