@@ -255,7 +255,7 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            // 预先重置冷却和攻击计息
+            // 预先彻底重置冷却和满蓄力
             resetAttackCooldown(client);
 
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
@@ -264,7 +264,7 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 针对 1.21.11 等环境的木斧标记补偿 (核心：必须在 doAttack 之前或完全替代它)
+            // 1. 针对 1.21.11 等环境的木斧标记补偿 (核心：显式调用以模拟左键点击方块)
             Class<?> blockHitResultClass = null;
             try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
             if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
@@ -273,13 +273,12 @@ public class AutomationManager {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            // 1.21.11 下，直接通过 interactionManager 的私有方法或 attackBlock 模拟左键
+                            // 优先尝试三参数签名 (BlockPos, Direction, int) 适配 1.21.4/1.21.11
                             try {
-                                MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                                MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0);
                             } catch (Exception e) {
-                                // 备选：尝试带有三个参数的签名 (BlockPos, Direction, int)
                                 try {
-                                    MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0);
+                                    MappingHelper.invokeMethod(im, "attackBlock", pos, side);
                                 } catch (Exception e2) {
                                     java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
                                     if (m != null) { m.setAccessible(true); m.invoke(im, pos, side); }
@@ -290,25 +289,20 @@ public class AutomationManager {
                 }
             }
 
-            // 2. 原生 doAttack (核心逻辑)
-            boolean nativeActed = false;
+            // 2. 调用原生 doAttack (核心逻辑：处理攻击状态、挥手包发送)
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
-                nativeActed = true;
             } catch (Exception e) {
-                // 结构化 fallback: MinecraftClient 下无参且名称包含 method_15 的方法 (1.21.1: 1536, 1.21.4: 1587)
                 try {
                     for (java.lang.reflect.Method m : client.getClass().getDeclaredMethods()) {
                         if (m.getParameterCount() == 0 && (m.getName().startsWith("method_15") || m.getName().equals("doAttack"))) {
-                            m.setAccessible(true);
-                            m.invoke(client);
-                            break;
+                            m.setAccessible(true); m.invoke(client); break;
                         }
                     }
                 } catch (Exception ignored) {}
             }
 
-            // 3. 实体补偿与无敌时间重置 (如果 doAttack 没生效或者为了确保高频有效)
+            // 3. 实体补偿与伤害确保
             if (target != null) {
                 Class<?> entityHitResultClass = null;
                 try { entityHitResultClass = MappingHelper.getClass("EntityHitResult"); } catch (Exception ignored) {}
@@ -429,10 +423,10 @@ public class AutomationManager {
 
             Object player = CommandDispatcher.getClientPlayer();
             if (player != null) {
-                // 重置玩家攻击强度: field_6010 (lastAttackedTicks)
-                try { MappingHelper.setFieldValue(player, "field_6010", 200); } catch (Exception ignored) {}
-                try { MappingHelper.setFieldValue(player, "lastAttackedTicks", 200); } catch (Exception ignored) {}
-                try { MappingHelper.invokeMethod(player, "resetLastAttackedTicks"); } catch (Exception ignored) {}
+                // 强制设为蓄力满状态: field_6010 (lastAttackedTicks)
+                // 注意：不能调用 resetLastAttackedTicks()，因为那会把蓄力清零
+                try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(player, "lastAttackedTicks", 100); } catch (Exception ignored) {}
 
                 // 停止使用物品（如果正在使用），防止阻塞攻击
                 boolean isUsing = false;
