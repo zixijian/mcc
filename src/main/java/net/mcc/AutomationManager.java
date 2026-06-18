@@ -17,21 +17,17 @@ public class AutomationManager {
 
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
-            // 立即调度执行一次
+            // 立即调度执行一次，不设置后续标志位以保证“单次”纯净性
             try {
                 Object client = CommandDispatcher.getClient();
                 Object player = CommandDispatcher.getClientPlayer();
                 if (client != null && player != null) {
-                    // 尝试在客户端主线程执行，确保立即生效且不崩溃
-                    try {
-                        MappingHelper.invokeMethod(client, "execute", (Runnable) () -> triggerAttack(client, player));
-                    } catch (Throwable e) {
+                    // 强制单次执行，不再依赖 onTick 的 attackOnce
+                    MappingHelper.invokeMethod(client, "execute", (Runnable) () -> {
                         triggerAttack(client, player);
-                    }
+                    });
                 }
             } catch (Throwable ignored) {}
-            attackOnce = true;
-            attackTimer = 0;
             CommandDispatcher.addFeedback("§a执行攻击一次");
             return;
         }
@@ -283,14 +279,14 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 环境补正
+            // 1. 严格的环境锁定：强制非疾跑 + 在地 + 满冷却 (横扫群伤核心)
             try {
                 MappingHelper.invokeMethod(player, "setSprinting", false);
-                MappingHelper.setFieldValue(player, "field_6012", true);
-                MappingHelper.setFieldValue(player, "field_6010", 100);
+                MappingHelper.setFieldValue(player, "onGround", true);
+                MappingHelper.setFieldValue(player, "lastAttackedTicks", 100);
             } catch (Throwable ignored) {}
 
-            // 2. 目标识别
+            // 2. 目标深度分析
             boolean isArmorStand = false;
             Object targetEntity = null;
             boolean isEntity = false;
@@ -298,16 +294,13 @@ public class AutomationManager {
                 if (target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
                     isEntity = true;
                     targetEntity = MappingHelper.invokeMethod(target, "getEntity");
-                    if (targetEntity != null && MappingHelper.getClass("ArmorStand").isInstance(targetEntity)) {
+                    if (targetEntity != null && (targetEntity.getClass().getName().contains("class_1531") || MappingHelper.getClass("ArmorStand").isInstance(targetEntity))) {
                         isArmorStand = true;
                     }
                 }
             } catch (Throwable ignored) {}
 
-            // 3. 动作计数
-            try { incrementKeyCounter(client, "key.attack"); } catch (Throwable ignored) {}
-
-            // 4. 原生攻击
+            // 3. 原生攻击执行 (过滤盔甲架防止破坏)
             if (!isArmorStand) {
                 try {
                     MappingHelper.invokeMethod(client, "doAttack");

@@ -95,6 +95,7 @@ public class MappingHelper {
         MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
         MAPPINGS.put("ITEM", "field_41175");
         MAPPINGS.put("lastAttackedTicks", "field_6010");
+        MAPPINGS.put("onGround", "field_6012");
         MAPPINGS.put("hurtResistantTime", "field_6008");
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
@@ -205,6 +206,12 @@ public class MappingHelper {
             case "TextColor": return "net.minecraft.network.chat.TextColor";
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
+            case "ArmorStand": return "net.minecraft.world.entity.decoration.ArmorStand";
+            case "LivingEntity": return "net.minecraft.world.entity.LivingEntity";
+            case "Entity": return "net.minecraft.world.entity.Entity";
+            case "BlockPos": return "net.minecraft.core.BlockPos";
+            case "Direction": return "net.minecraft.core.Direction";
+            case "Vec3d": return "net.minecraft.world.phys.Vec3";
             default: return null;
         }
     }
@@ -354,7 +361,8 @@ public class MappingHelper {
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
-        if (yarnName.equals("swingHand")) { names.add("method_6104"); }
+        if (yarnName.equals("swingHand")) { names.add("method_6104"); names.add("method_5973"); }
+        if (yarnName.equals("setSprinting")) { names.add("method_5728"); names.add("method_5621"); }
         if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
         if (yarnName.equals("getString")) { names.add("method_10851"); }
         if (yarnName.equals("getBlockPos")) { names.add("method_17777"); }
