@@ -94,6 +94,10 @@ public class MappingHelper {
         MAPPINGS.put("hurtResistantTime", "field_6008");
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
+        MAPPINGS.put("sprinting", "field_6012");
+        MAPPINGS.put("onGround", "field_5971");
+        MAPPINGS.put("handSwinging", "field_6277");
+        MAPPINGS.put("handSwingTicks", "field_6259");
         MAPPINGS.put("MAIN_HAND", "field_5808");
 
         // 方法映射 (Yarn -> Intermediary)

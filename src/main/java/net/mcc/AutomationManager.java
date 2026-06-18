@@ -206,7 +206,7 @@ public class AutomationManager {
             // 2. 攻击逻辑
             if (attackFreq >= 0 || attackOnce) {
                 // 固定永久蓄满力: field_6010 (lastAttackedTicks)
-                try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(player, "field_6010", 200); } catch (Exception ignored) {}
             }
 
             if (attackOnce) {
@@ -255,69 +255,98 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
+            boolean wasSprinting = false;
+            boolean wasOnGround = true;
+            try { wasSprinting = (boolean) MappingHelper.getFieldValue(player, "sprinting", null); } catch (Exception ignored) {}
+            try { wasOnGround = (boolean) MappingHelper.getFieldValue(player, "onGround", null); } catch (Exception ignored) {}
+
+            // 强制非疾跑且在地面，以触发挥扫 (Sweeping Edge)
+            if (wasSprinting) {
+                try { MappingHelper.setFieldValue(player, "sprinting", false); } catch (Exception ignored) {}
+            }
+            if (!wasOnGround) {
+                try { MappingHelper.setFieldValue(player, "onGround", true); } catch (Exception ignored) {}
+            }
+
+            // 预先重置冷却和攻击计息
+            resetAttackCooldown(client);
+
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239")); // HitResult
+            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
 
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-            boolean acted = false;
 
-            // 1. 深度补充：显式触发 attackBlock (圈地标记的核心)
-            if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+            // 1. 针对 1.21.11 等环境的木斧标记补偿
+            Class<?> blockHitResultClass = null;
+            try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
+            if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
                 if (im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            // 尝试多种方法签名以确保 1.21.11 兼容
                             try {
                                 MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                                acted = true;
                             } catch (Exception e) {
-                                // 暴力结构化查找: (BlockPos, Direction) -> boolean/void
                                 java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
-                                if (m != null) {
-                                    m.setAccessible(true);
-                                    m.invoke(im, pos, side);
-                                    acted = true;
-                                }
+                                if (m != null) { m.setAccessible(true); m.invoke(im, pos, side); }
                             }
                         }
                     } catch (Exception ignored) {}
                 }
             }
 
-            // 2. 原生 doAttack (触发挥手和常规攻击逻辑)
+            // 2. 原生 doAttack (核心逻辑)
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
-                acted = true;
             } catch (Exception e) {
-                // 暴力结构化查找 doAttack (无参)
+                // 结构化 fallback: MinecraftClient 下无参且名称包含 method_15 的方法 (1.21.1: 1536, 1.21.4: 1587)
                 try {
-                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
-                    if (m != null && m.getName().startsWith("method_15")) { // 缩小范围
-                        m.setAccessible(true);
-                        m.invoke(client);
-                        acted = true;
+                    for (java.lang.reflect.Method m : client.getClass().getDeclaredMethods()) {
+                        if (m.getParameterCount() == 0 && (m.getName().startsWith("method_15") || m.getName().equals("doAttack"))) {
+                            m.setAccessible(true);
+                            m.invoke(client);
+                            break;
+                        }
                     }
                 } catch (Exception ignored) {}
             }
 
-            // 3. 显式补偿攻击实体
-            if (!acted && target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
-                if (im != null) {
-                    Object entity = MappingHelper.invokeMethod(target, "getEntity");
+            // 3. 实体补偿与无敌时间重置
+            if (target != null) {
+                Class<?> entityHitResultClass = null;
+                try { entityHitResultClass = MappingHelper.getClass("EntityHitResult"); } catch (Exception ignored) {}
+                if (entityHitResultClass != null && entityHitResultClass.isInstance(target)) {
+                    Object entity = null;
+                    try { entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
+                    if (entity == null) {
+                        try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
+                    }
                     if (entity != null) {
                         try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
-                        MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                        acted = true;
+                        try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {}
+                        if (im != null) {
+                            try {
+                                MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                            } catch (Exception e) {
+                                // 结构化补偿
+                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, player.getClass(), entity.getClass());
+                                if (m != null) { m.setAccessible(true); m.invoke(im, player, entity); }
+                            }
+                        }
                     }
                 }
             }
 
-            // 4. 强制触发挥手 (确保有视觉反馈)
+            // 4. 强制视觉反馈：重置挥手动画以支持高频
             if (mainHand != null) {
                 try {
+                    try { MappingHelper.setFieldValue(player, "handSwinging", false); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(player, "field_6277", false); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(player, "handSwingTicks", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(player, "field_6259", 0); } catch (Exception ignored) {}
+
                     MappingHelper.invokeMethod(player, "swingHand", mainHand);
                 } catch (Exception e) {
                     // 暴力查找 swingHand (Hand)
@@ -327,6 +356,18 @@ public class AutomationManager {
                     } catch (Exception ignored) {}
                 }
             }
+
+            // 恢复疾跑和地面状态
+            if (wasSprinting) {
+                try { MappingHelper.setFieldValue(player, "sprinting", true); } catch (Exception ignored) {}
+            }
+            if (!wasOnGround) {
+                try { MappingHelper.setFieldValue(player, "onGround", false); } catch (Exception ignored) {}
+            }
+
+            // 攻击后再次确保冷却重置，防止原生逻辑在 doAttack 结尾重新设置冷却
+            resetAttackCooldown(client);
+
         } catch (Exception ignored) {}
     }
 
@@ -350,7 +391,9 @@ public class AutomationManager {
                 }
             }
 
-            if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+            Class<?> blockHitResultClass = null;
+            try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
+            if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
                 Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
                 if (res != null) {
                     boolean accepted = false;
@@ -392,9 +435,10 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player != null) {
                 // 重置玩家攻击强度: field_6010 (lastAttackedTicks)
-                try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(player, "field_6010", 200); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(player, "lastAttackedTicks", 200); } catch (Exception ignored) {}
 
-                // 停止使用物品（如果正在使用）
+                // 停止使用物品（如果正在使用），防止阻塞攻击
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
                 if (isUsing) {
@@ -406,20 +450,18 @@ public class AutomationManager {
                 }
 
                 // 暴力重置目标无敌时间
-                Object target = null;
-                String[] targetFields = {"field_1765", "field1765", "crosshairTarget"};
-                for (String f : targetFields) {
-                    try { target = MappingHelper.getFieldValue(client, f, null); if (target != null) break; } catch (Exception ignored) {}
-                }
-
-                if (target != null && target.getClass().getName().contains("class_3966")) { // EntityHitResult
-                    Object entity = null;
-                    try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
-                    try { if (entity == null) entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
-
-                    if (entity != null) {
-                        try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {} // hurtResistantTime
-                        try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {} // hurtTime
+                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+                if (target != null) {
+                    Class<?> entityHitResultClass = null;
+                    try { entityHitResultClass = MappingHelper.getClass("EntityHitResult"); } catch (Exception ignored) {}
+                    if (entityHitResultClass != null && entityHitResultClass.isInstance(target)) {
+                        Object entity = MappingHelper.invokeMethod(target, "getEntity");
+                        if (entity != null) {
+                            try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {} // hurtResistantTime
+                            try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {} // hurtTime
+                            try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
+                            try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
+                        }
                     }
                 }
             }
@@ -428,7 +470,7 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             if (im != null) {
                 try { MappingHelper.setFieldValue(im, "field_1613", 0); } catch (Exception ignored) {}
-                try { MappingHelper.setFieldValue(im, "field1613", 0); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(im, "blockBreakingCooldown", 0); } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
     }
