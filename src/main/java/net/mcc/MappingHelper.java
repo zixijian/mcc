@@ -171,6 +171,9 @@ public class MappingHelper {
         MAPPINGS.put("getRotationVec", "method_19305");
         MAPPINGS.put("getCameraPosVec", "method_19318");
         MAPPINGS.put("getPos", "method_17784"); // HitResult.getPos
+        MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
+        MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
+        MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("setSprinting", "method_5728");
         MAPPINGS.put("x", "field_1352");
         MAPPINGS.put("y", "field_1351");
@@ -361,7 +364,7 @@ public class MappingHelper {
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
-        if (yarnName.equals("swingHand")) { names.add("method_6104"); names.add("method_5973"); }
+        if (yarnName.equals("swingHand")) { names.add("method_6104"); names.add("method_5973"); names.add("method_20235"); }
         if (yarnName.equals("setSprinting")) { names.add("method_5728"); names.add("method_5621"); }
         if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
         if (yarnName.equals("getString")) { names.add("method_10851"); }

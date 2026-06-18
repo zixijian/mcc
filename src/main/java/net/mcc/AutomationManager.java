@@ -17,17 +17,8 @@ public class AutomationManager {
 
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
-            // 立即调度执行一次，不设置后续标志位以保证“单次”纯净性
-            try {
-                Object client = CommandDispatcher.getClient();
-                Object player = CommandDispatcher.getClientPlayer();
-                if (client != null && player != null) {
-                    // 强制单次执行，不再依赖 onTick 的 attackOnce
-                    MappingHelper.invokeMethod(client, "execute", (Runnable) () -> {
-                        triggerAttack(client, player);
-                    });
-                }
-            } catch (Throwable ignored) {}
+            attackOnce = true;
+            attackTimer = 0;
             CommandDispatcher.addFeedback("§a执行攻击一次");
             return;
         }
@@ -271,13 +262,18 @@ public class AutomationManager {
     private static void triggerAttack(Object client, Object player) {
         if (client == null || player == null) return;
         try {
+            Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+            // 0. 视觉优先：立即开始挥手
+            if (mainHand != null) {
+                try { MappingHelper.invokeMethod(player, "swingHand", mainHand); } catch (Throwable ignored) {}
+            }
+
             resetAttackCooldown(client);
 
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
 
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-            Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
             // 1. 严格的环境锁定：强制非疾跑 + 在地 + 满冷却 (横扫群伤核心)
             try {
@@ -294,13 +290,53 @@ public class AutomationManager {
                 if (target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
                     isEntity = true;
                     targetEntity = MappingHelper.invokeMethod(target, "getEntity");
-                    if (targetEntity != null && (targetEntity.getClass().getName().contains("class_1531") || MappingHelper.getClass("ArmorStand").isInstance(targetEntity))) {
-                        isArmorStand = true;
+                    if (targetEntity != null) {
+                        String cn = targetEntity.getClass().getName();
+                        if (cn.contains("class_1531") || cn.contains("ArmorStand")) isArmorStand = true;
                     }
                 }
             } catch (Throwable ignored) {}
 
-            // 3. 原生攻击执行 (过滤盔甲架防止破坏)
+            // 3. 标记点定位逻辑 (木斧标记核心)
+            Object markPos = null;
+            Object markSide = MappingHelper.getEnumConstant("Direction", "UP");
+            try {
+                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                    markPos = MappingHelper.invokeMethod(target, "getBlockPos");
+                    markSide = MappingHelper.invokeMethod(target, "getSide");
+                } else if (isArmorStand && targetEntity != null) {
+                    markPos = MappingHelper.invokeMethod(targetEntity, "getBlockPos");
+                } else if (!isEntity) {
+                    // 虚空标记：计算前方 4.5 格
+                    Object cameraPos = MappingHelper.invokeMethod(player, "getCameraPosVec", 1.0f);
+                    Object rotation = MappingHelper.invokeMethod(player, "getRotationVec", 1.0f);
+                    if (cameraPos != null && rotation != null) {
+                        double rx = ((Number) MappingHelper.getFieldValue(rotation, "x", null)).doubleValue();
+                        double ry = ((Number) MappingHelper.getFieldValue(rotation, "y", null)).doubleValue();
+                        double rz = ((Number) MappingHelper.getFieldValue(rotation, "z", null)).doubleValue();
+                        double cx = ((Number) MappingHelper.getFieldValue(cameraPos, "x", null)).doubleValue();
+                        double cy = ((Number) MappingHelper.getFieldValue(cameraPos, "y", null)).doubleValue();
+                        double cz = ((Number) MappingHelper.getFieldValue(cameraPos, "z", null)).doubleValue();
+                        markPos = MappingHelper.getClass("BlockPos").getConstructor(int.class, int.class, int.class).newInstance(
+                            (int)Math.floor(cx + rx * 4.5), (int)Math.floor(cy + ry * 4.5), (int)Math.floor(cz + rz * 4.5)
+                        );
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            // 4. 执行标记 (木斧点击)
+            if (im != null && markPos != null) {
+                try {
+                    MappingHelper.invokeMethod(im, "attackBlock", markPos, markSide);
+                } catch (Throwable e) {
+                    try {
+                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, markPos.getClass(), markSide.getClass());
+                        if (m != null) { m.setAccessible(true); m.invoke(im, markPos, markSide); }
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            // 5. 原生攻击执行 (非盔甲架)
             if (!isArmorStand) {
                 try {
                     MappingHelper.invokeMethod(client, "doAttack");
@@ -310,78 +346,18 @@ public class AutomationManager {
                         if (m != null && m.getName().startsWith("method_15")) { m.setAccessible(true); m.invoke(client); }
                     } catch (Throwable ignored) {}
                 }
-            }
-
-            // 5. 领地标记 & 交互补偿
-            if (im != null) {
-                try {
-                    Object blockPos = null;
-                    Object side = null;
-
-                    if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                        blockPos = MappingHelper.invokeMethod(target, "getBlockPos");
-                        side = MappingHelper.invokeMethod(target, "getSide");
-                    } else if (isArmorStand && targetEntity != null) {
-                        blockPos = MappingHelper.invokeMethod(targetEntity, "getBlockPos");
-                        side = MappingHelper.getEnumConstant("Direction", "UP");
-                    } else if (!isEntity) {
-                        // 仅在非实体指向时尝试虚空标记
-                        try {
-                            Object cameraPos = MappingHelper.invokeMethod(player, "getCameraPosVec", 1.0f);
-                            Object rotation = MappingHelper.invokeMethod(player, "getRotationVec", 1.0f);
-                            if (cameraPos != null && rotation != null) {
-                                double rx = ((Number) MappingHelper.getFieldValue(rotation, "x", null)).doubleValue();
-                                double ry = ((Number) MappingHelper.getFieldValue(rotation, "y", null)).doubleValue();
-                                double rz = ((Number) MappingHelper.getFieldValue(rotation, "z", null)).doubleValue();
-                                double cx = ((Number) MappingHelper.getFieldValue(cameraPos, "x", null)).doubleValue();
-                                double cy = ((Number) MappingHelper.getFieldValue(cameraPos, "y", null)).doubleValue();
-                                double cz = ((Number) MappingHelper.getFieldValue(cameraPos, "z", null)).doubleValue();
-
-                                double reach = 4.5;
-                                int bx = (int) Math.floor(cx + rx * reach);
-                                int by = (int) Math.floor(cy + ry * reach);
-                                int bz = (int) Math.floor(cz + rz * reach);
-                                blockPos = MappingHelper.getClass("BlockPos").getConstructor(int.class, int.class, int.class).newInstance(bx, by, bz);
-                                side = MappingHelper.getEnumConstant("Direction", "UP");
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-
-                    if (blockPos != null && side != null) {
-                        try {
-                            MappingHelper.invokeMethod(im, "attackBlock", blockPos, side);
-                        } catch (Throwable e) {
-                            try {
-                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, blockPos.getClass(), side.getClass());
-                                if (m != null) { m.setAccessible(true); m.invoke(im, blockPos, side); }
-                            } catch (Throwable ignored) {}
-                        }
-                    }
-                } catch (Throwable ignored) {}
-            }
-
-            // 6. 实体补偿 (非盔甲架)
-            if (!isArmorStand && targetEntity != null) {
-                try {
-                    MappingHelper.setFieldValue(targetEntity, "field_6008", 0);
-                    MappingHelper.setFieldValue(targetEntity, "field_6007", 0);
-                    MappingHelper.invokeMethod(im, "attackEntity", player, targetEntity);
-                } catch (Throwable ignored) {}
-            }
-
-            // 7. 挥手动效 (兜底触发)
-            if (mainHand != null) {
-                try {
-                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                } catch (Throwable e) {
+                // 实体伤害补偿
+                if (isEntity && targetEntity != null && im != null) {
                     try {
-                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(player.getClass(), null, mainHand.getClass());
-                        if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
+                        MappingHelper.setFieldValue(targetEntity, "field_6008", 0); // hurtResistantTime
+                        MappingHelper.invokeMethod(im, "attackEntity", player, targetEntity);
                     } catch (Throwable ignored) {}
                 }
             }
 
             resetAttackCooldown(client);
+            // 再次锁定蓄力，确保横扫在下个 tick 的连续性
+            try { MappingHelper.setFieldValue(player, "lastAttackedTicks", 100); } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
     }
 
