@@ -262,27 +262,15 @@ public class AutomationManager {
     private static void triggerAttack(Object client, Object player) {
         if (client == null || player == null) return;
         try {
-            Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-            // 0. 视觉优先：立即开始挥手
-            if (mainHand != null) {
-                try { MappingHelper.invokeMethod(player, "swingHand", mainHand); } catch (Throwable ignored) {}
-            }
-
             resetAttackCooldown(client);
 
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
 
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+            Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 严格的环境锁定：强制非疾跑 + 在地 + 满冷却 (横扫群伤核心)
-            try {
-                MappingHelper.invokeMethod(player, "setSprinting", false);
-                MappingHelper.setFieldValue(player, "onGround", true);
-                MappingHelper.setFieldValue(player, "lastAttackedTicks", 100);
-            } catch (Throwable ignored) {}
-
-            // 2. 目标深度分析
+            // 1. 目标深度分析
             boolean isArmorStand = false;
             Object targetEntity = null;
             boolean isEntity = false;
@@ -297,7 +285,7 @@ public class AutomationManager {
                 }
             } catch (Throwable ignored) {}
 
-            // 3. 标记点定位逻辑 (木斧标记核心)
+            // 2. 标记定位逻辑 (WorldEdit/Tweakeroo 优先策略)
             Object markPos = null;
             Object markSide = MappingHelper.getEnumConstant("Direction", "UP");
             try {
@@ -317,14 +305,17 @@ public class AutomationManager {
                         double cx = ((Number) MappingHelper.getFieldValue(cameraPos, "x", null)).doubleValue();
                         double cy = ((Number) MappingHelper.getFieldValue(cameraPos, "y", null)).doubleValue();
                         double cz = ((Number) MappingHelper.getFieldValue(cameraPos, "z", null)).doubleValue();
-                        markPos = MappingHelper.getClass("BlockPos").getConstructor(int.class, int.class, int.class).newInstance(
-                            (int)Math.floor(cx + rx * 4.5), (int)Math.floor(cy + ry * 4.5), (int)Math.floor(cz + rz * 4.5)
-                        );
+                        int bx = (int) Math.floor(cx + rx * 4.5);
+                        int by = (int) Math.floor(cy + ry * 4.5);
+                        int bz = (int) Math.floor(cz + rz * 4.5);
+                        // 强制范围检测：防止 EncoderException (Y 必须在合理范围内)
+                        if (by < -64) by = -64; if (by > 319) by = 319;
+                        markPos = MappingHelper.getClass("BlockPos").getConstructor(int.class, int.class, int.class).newInstance(bx, by, bz);
                     }
                 }
             } catch (Throwable ignored) {}
 
-            // 4. 执行标记 (木斧点击)
+            // 3. 优先执行标记交互 (在 Tweakeroo 武器切换前完成)
             if (im != null && markPos != null) {
                 try {
                     MappingHelper.invokeMethod(im, "attackBlock", markPos, markSide);
@@ -336,7 +327,14 @@ public class AutomationManager {
                 }
             }
 
-            // 5. 原生攻击执行 (非盔甲架)
+            // 4. 环境补正 (横扫与全额伤害)
+            try {
+                MappingHelper.invokeMethod(player, "setSprinting", false);
+                MappingHelper.setFieldValue(player, "onGround", true);
+                MappingHelper.setFieldValue(player, "lastAttackedTicks", 100);
+            } catch (Throwable ignored) {}
+
+            // 5. 核心攻击动作
             if (!isArmorStand) {
                 try {
                     MappingHelper.invokeMethod(client, "doAttack");
@@ -346,7 +344,7 @@ public class AutomationManager {
                         if (m != null && m.getName().startsWith("method_15")) { m.setAccessible(true); m.invoke(client); }
                     } catch (Throwable ignored) {}
                 }
-                // 实体伤害补偿
+                // 实体伤害补充
                 if (isEntity && targetEntity != null && im != null) {
                     try {
                         MappingHelper.setFieldValue(targetEntity, "field_6008", 0); // hurtResistantTime
@@ -355,8 +353,12 @@ public class AutomationManager {
                 }
             }
 
+            // 6. 视觉反馈
+            if (mainHand != null) {
+                try { MappingHelper.invokeMethod(player, "swingHand", mainHand); } catch (Throwable ignored) {}
+            }
+
             resetAttackCooldown(client);
-            // 再次锁定蓄力，确保横扫在下个 tick 的连续性
             try { MappingHelper.setFieldValue(player, "lastAttackedTicks", 100); } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
     }

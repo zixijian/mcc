@@ -364,7 +364,7 @@ public class MappingHelper {
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
-        if (yarnName.equals("swingHand")) { names.add("method_6104"); names.add("method_5973"); names.add("method_20235"); }
+        if (yarnName.equals("swingHand")) { names.add("method_6104"); names.add("method_5973"); }
         if (yarnName.equals("setSprinting")) { names.add("method_5728"); names.add("method_5621"); }
         if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
         if (yarnName.equals("getString")) { names.add("method_10851"); }
