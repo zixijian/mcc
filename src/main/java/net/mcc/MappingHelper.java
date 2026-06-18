@@ -64,6 +64,10 @@ public class MappingHelper {
         MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
+        MAPPINGS.put("ArmorStand", "net/minecraft/class_1531");
+        MAPPINGS.put("Vec3d", "net/minecraft/class_243");
+        MAPPINGS.put("BlockPos", "net/minecraft/class_2338");
+        MAPPINGS.put("Direction", "net/minecraft/class_2350");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -163,6 +167,13 @@ public class MappingHelper {
         MAPPINGS.put("getStyle", "method_10855");
         MAPPINGS.put("getRgb", "method_35842"); // TextColor.getRgb
         MAPPINGS.put("isAccepted", "method_23665");
+        MAPPINGS.put("getRotationVec", "method_19305");
+        MAPPINGS.put("getCameraPosVec", "method_19318");
+        MAPPINGS.put("getPos", "method_17784"); // HitResult.getPos
+        MAPPINGS.put("setSprinting", "method_5728");
+        MAPPINGS.put("x", "field_1352");
+        MAPPINGS.put("y", "field_1351");
+        MAPPINGS.put("z", "field_1350");
     }
 
     public static String map(String name) {

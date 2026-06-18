@@ -17,8 +17,16 @@ public class AutomationManager {
 
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
+            // 立即同步尝试执行一次，并设置标志位在下个 tick 补充
+            try {
+                Object client = CommandDispatcher.getClient();
+                Object player = CommandDispatcher.getClientPlayer();
+                if (client != null && player != null) {
+                    triggerAttack(client, player);
+                }
+            } catch (Exception ignored) {}
             attackOnce = true;
-            attackTimer = 0; // 重置计时器
+            attackTimer = 0;
             CommandDispatcher.addFeedback("§a执行攻击一次");
             return;
         }
@@ -269,51 +277,90 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 模拟按键点击计数，这是 1.21.11 及某些插件识别点击的重要标志
+            // 1. 横扫条件优化
+            try {
+                MappingHelper.invokeMethod(player, "setSprinting", false); // 横扫需要非疾跑
+                MappingHelper.setFieldValue(player, "field_6012", true); // onGround
+            } catch (Exception ignored) {}
+
+            // 2. 目标分析与过滤
+            boolean isArmorStand = false;
+            Object targetEntity = null;
+            if (target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
+                targetEntity = MappingHelper.invokeMethod(target, "getEntity");
+                if (targetEntity != null && MappingHelper.getClass("ArmorStand").isInstance(targetEntity)) {
+                    isArmorStand = true;
+                }
+            }
+
+            // 3. 模拟按键点击计数
             incrementKeyCounter(client, "key.attack");
 
-            // 1. 执行原生 doAttack (核心：触发大部分常规交互逻辑)
-            boolean nativeDone = false;
-            try {
-                MappingHelper.invokeMethod(client, "doAttack");
-                nativeDone = true;
-            } catch (Exception e) {
-                // 结构化降级尝试
-                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
-                if (m != null && m.getName().startsWith("method_15")) {
-                    m.setAccessible(true); m.invoke(client); nativeDone = true;
+            // 4. 执行核心攻击 (如果不是盔甲架)
+            if (!isArmorStand) {
+                try {
+                    MappingHelper.invokeMethod(client, "doAttack");
+                } catch (Exception e) {
+                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
+                    if (m != null && m.getName().startsWith("method_15")) { m.setAccessible(true); m.invoke(client); }
                 }
             }
 
-            // 2. 针对 1.21.11 木斧标记等插件的“显式”补偿
-            if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                if (im != null) {
-                    Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
-                    Object side = MappingHelper.invokeMethod(target, "getSide");
-                    if (pos != null && side != null) {
-                        try {
-                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                        } catch (Exception e) {
-                            java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
-                            if (m != null) { m.setAccessible(true); m.invoke(im, pos, side); }
+            // 5. 领地标记逻辑 (木斧标记核心)
+            if (im != null) {
+                Object blockPos = null;
+                Object side = null;
+
+                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                    blockPos = MappingHelper.invokeMethod(target, "getBlockPos");
+                    side = MappingHelper.invokeMethod(target, "getSide");
+                } else if (isArmorStand) {
+                    // 对准盔甲架时，获取其所在的坐标作为标记点
+                    blockPos = MappingHelper.invokeMethod(targetEntity, "getBlockPos");
+                    side = MappingHelper.getEnumConstant("Direction", "UP");
+                } else {
+                    // 虚空标记：计算准星方向 4.5 格处的坐标
+                    try {
+                        Object cameraPos = MappingHelper.invokeMethod(player, "getCameraPosVec", 1.0f);
+                        Object rotation = MappingHelper.invokeMethod(player, "getRotationVec", 1.0f);
+                        if (cameraPos != null && rotation != null) {
+                            double rx = ((Number) MappingHelper.getFieldValue(rotation, "x", null)).doubleValue();
+                            double ry = ((Number) MappingHelper.getFieldValue(rotation, "y", null)).doubleValue();
+                            double rz = ((Number) MappingHelper.getFieldValue(rotation, "z", null)).doubleValue();
+                            double cx = ((Number) MappingHelper.getFieldValue(cameraPos, "x", null)).doubleValue();
+                            double cy = ((Number) MappingHelper.getFieldValue(cameraPos, "y", null)).doubleValue();
+                            double cz = ((Number) MappingHelper.getFieldValue(cameraPos, "z", null)).doubleValue();
+
+                            double reach = 4.5;
+                            int bx = (int) Math.floor(cx + rx * reach);
+                            int by = (int) Math.floor(cy + ry * reach);
+                            int bz = (int) Math.floor(cz + rz * reach);
+                            blockPos = MappingHelper.getClass("BlockPos").getConstructor(int.class, int.class, int.class).newInstance(bx, by, bz);
+                            side = MappingHelper.getEnumConstant("Direction", "UP");
                         }
+                    } catch (Exception ignored) {}
+                }
+
+                if (blockPos != null && side != null) {
+                    try {
+                        MappingHelper.invokeMethod(im, "attackBlock", blockPos, side);
+                    } catch (Exception e) {
+                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, blockPos.getClass(), side.getClass());
+                        if (m != null) { m.setAccessible(true); m.invoke(im, blockPos, side); }
                     }
                 }
             }
 
-            // 3. 针对实体的强制无敌重置和显式攻击补偿
-            if (target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
-                Object entity = MappingHelper.invokeMethod(target, "getEntity");
-                if (entity != null) {
-                    try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {}
-                    try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {}
-                    if (im != null) {
-                        try { MappingHelper.invokeMethod(im, "attackEntity", player, entity); } catch (Exception ignored) {}
-                    }
+            // 6. 实体伤害补偿 (非盔甲架)
+            if (!isArmorStand && targetEntity != null) {
+                try { MappingHelper.setFieldValue(targetEntity, "field_6008", 0); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(targetEntity, "field_6007", 0); } catch (Exception ignored) {}
+                if (im != null) {
+                    try { MappingHelper.invokeMethod(im, "attackEntity", player, targetEntity); } catch (Exception ignored) {}
                 }
             }
 
-            // 4. 强制视觉反馈
+            // 7. 强制触发挥手 (视觉反馈)
             if (mainHand != null) {
                 try {
                     MappingHelper.invokeMethod(player, "swingHand", mainHand);
@@ -323,7 +370,7 @@ public class AutomationManager {
                 }
             }
 
-            resetAttackCooldown(client); // 攻击后再次重置，防止同一 tick 内被锁定
+            resetAttackCooldown(client);
         } catch (Exception ignored) {}
     }
 
