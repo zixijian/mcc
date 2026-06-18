@@ -64,6 +64,7 @@ public class MappingHelper {
         MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
+        MAPPINGS.put("ChatScreen", "net/minecraft/class_408");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -149,6 +150,8 @@ public class MappingHelper {
         MAPPINGS.put("getPitch", "method_36455");
         MAPPINGS.put("setYaw", "method_36456");
         MAPPINGS.put("setPitch", "method_36457");
+        MAPPINGS.put("setSprinting", "method_5735");
+        MAPPINGS.put("resetLastAttackedTicks", "method_5851");
         MAPPINGS.put("getId", "method_10221");
         MAPPINGS.put("getCommandDispatcher", "method_2903");
         MAPPINGS.put("getRoot", "method_8257");

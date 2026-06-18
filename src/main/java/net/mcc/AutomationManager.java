@@ -178,11 +178,15 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
+            // 健壮的当前屏幕检测：允许在聊天界面时运行自动化
             Object currentScreen = null;
             try {
                 Class<?> screenClass = MappingHelper.getClass("Screen");
                 currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
+                if (currentScreen != null) {
+                    Class<?> chatScreenClass = MappingHelper.getClass("ChatScreen");
+                    if (chatScreenClass.isInstance(currentScreen)) currentScreen = null;
+                }
             } catch (Exception ignored) {}
             if (currentScreen != null) return;
 
@@ -263,6 +267,7 @@ public class AutomationManager {
             // 强制非疾跑且在地面，以触发挥扫 (Sweeping Edge)
             if (wasSprinting) {
                 try { MappingHelper.setFieldValue(player, "sprinting", false); } catch (Exception ignored) {}
+                try { MappingHelper.invokeMethod(player, "setSprinting", false); } catch (Exception ignored) {}
             }
             if (!wasOnGround) {
                 try { MappingHelper.setFieldValue(player, "onGround", true); } catch (Exception ignored) {}
@@ -298,8 +303,10 @@ public class AutomationManager {
             }
 
             // 2. 原生 doAttack (核心逻辑)
+            boolean nativeActed = false;
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
+                nativeActed = true;
             } catch (Exception e) {
                 // 结构化 fallback: MinecraftClient 下无参且名称包含 method_15 的方法 (1.21.1: 1536, 1.21.4: 1587)
                 try {
@@ -313,7 +320,7 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 3. 实体补偿与无敌时间重置
+            // 3. 实体补偿与无敌时间重置 (如果 doAttack 没生效或者为了确保高频有效)
             if (target != null) {
                 Class<?> entityHitResultClass = null;
                 try { entityHitResultClass = MappingHelper.getClass("EntityHitResult"); } catch (Exception ignored) {}
@@ -324,8 +331,11 @@ public class AutomationManager {
                         try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
                     }
                     if (entity != null) {
+                        // 强制重置目标无敌时间，确保每一发都有伤害
                         try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
                         try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {}
+                        try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {}
+
                         if (im != null) {
                             try {
                                 MappingHelper.invokeMethod(im, "attackEntity", player, entity);
@@ -360,6 +370,7 @@ public class AutomationManager {
             // 恢复疾跑和地面状态
             if (wasSprinting) {
                 try { MappingHelper.setFieldValue(player, "sprinting", true); } catch (Exception ignored) {}
+                try { MappingHelper.invokeMethod(player, "setSprinting", true); } catch (Exception ignored) {}
             }
             if (!wasOnGround) {
                 try { MappingHelper.setFieldValue(player, "onGround", false); } catch (Exception ignored) {}
@@ -437,6 +448,7 @@ public class AutomationManager {
                 // 重置玩家攻击强度: field_6010 (lastAttackedTicks)
                 try { MappingHelper.setFieldValue(player, "field_6010", 200); } catch (Exception ignored) {}
                 try { MappingHelper.setFieldValue(player, "lastAttackedTicks", 200); } catch (Exception ignored) {}
+                try { MappingHelper.invokeMethod(player, "resetLastAttackedTicks"); } catch (Exception ignored) {}
 
                 // 停止使用物品（如果正在使用），防止阻塞攻击
                 boolean isUsing = false;
