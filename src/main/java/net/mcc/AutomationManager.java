@@ -17,14 +17,19 @@ public class AutomationManager {
 
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
-            // 立即同步尝试执行一次，并设置标志位在下个 tick 补充
+            // 立即调度执行一次
             try {
                 Object client = CommandDispatcher.getClient();
                 Object player = CommandDispatcher.getClientPlayer();
                 if (client != null && player != null) {
-                    triggerAttack(client, player);
+                    // 尝试在客户端主线程执行，确保立即生效且不崩溃
+                    try {
+                        MappingHelper.invokeMethod(client, "execute", (Runnable) () -> triggerAttack(client, player));
+                    } catch (Throwable e) {
+                        triggerAttack(client, player);
+                    }
                 }
-            } catch (Exception ignored) {}
+            } catch (Throwable ignored) {}
             attackOnce = true;
             attackTimer = 0;
             CommandDispatcher.addFeedback("§a执行攻击一次");
@@ -268,8 +273,9 @@ public class AutomationManager {
     }
 
     private static void triggerAttack(Object client, Object player) {
+        if (client == null || player == null) return;
         try {
-            resetAttackCooldown(client); // 攻击前强制重置
+            resetAttackCooldown(client);
 
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
@@ -277,101 +283,113 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 横扫条件优化
+            // 1. 环境补正
             try {
-                MappingHelper.invokeMethod(player, "setSprinting", false); // 横扫需要非疾跑
-                MappingHelper.setFieldValue(player, "field_6012", true); // onGround
-            } catch (Exception ignored) {}
+                MappingHelper.invokeMethod(player, "setSprinting", false);
+                MappingHelper.setFieldValue(player, "field_6012", true);
+                MappingHelper.setFieldValue(player, "field_6010", 100);
+            } catch (Throwable ignored) {}
 
-            // 2. 目标分析与过滤
+            // 2. 目标识别
             boolean isArmorStand = false;
             Object targetEntity = null;
-            if (target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
-                targetEntity = MappingHelper.invokeMethod(target, "getEntity");
-                if (targetEntity != null && MappingHelper.getClass("ArmorStand").isInstance(targetEntity)) {
-                    isArmorStand = true;
+            boolean isEntity = false;
+            try {
+                if (target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
+                    isEntity = true;
+                    targetEntity = MappingHelper.invokeMethod(target, "getEntity");
+                    if (targetEntity != null && MappingHelper.getClass("ArmorStand").isInstance(targetEntity)) {
+                        isArmorStand = true;
+                    }
                 }
-            }
+            } catch (Throwable ignored) {}
 
-            // 3. 模拟按键点击计数
-            incrementKeyCounter(client, "key.attack");
+            // 3. 动作计数
+            try { incrementKeyCounter(client, "key.attack"); } catch (Throwable ignored) {}
 
-            // 4. 执行核心攻击 (如果不是盔甲架)
+            // 4. 原生攻击
             if (!isArmorStand) {
                 try {
                     MappingHelper.invokeMethod(client, "doAttack");
-                } catch (Exception e) {
-                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
-                    if (m != null && m.getName().startsWith("method_15")) { m.setAccessible(true); m.invoke(client); }
+                } catch (Throwable e) {
+                    try {
+                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
+                        if (m != null && m.getName().startsWith("method_15")) { m.setAccessible(true); m.invoke(client); }
+                    } catch (Throwable ignored) {}
                 }
             }
 
-            // 5. 领地标记逻辑 (木斧标记核心)
+            // 5. 领地标记 & 交互补偿
             if (im != null) {
-                Object blockPos = null;
-                Object side = null;
+                try {
+                    Object blockPos = null;
+                    Object side = null;
 
-                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                    blockPos = MappingHelper.invokeMethod(target, "getBlockPos");
-                    side = MappingHelper.invokeMethod(target, "getSide");
-                } else if (isArmorStand) {
-                    // 对准盔甲架时，获取其所在的坐标作为标记点
-                    blockPos = MappingHelper.invokeMethod(targetEntity, "getBlockPos");
-                    side = MappingHelper.getEnumConstant("Direction", "UP");
-                } else {
-                    // 虚空标记：计算准星方向 4.5 格处的坐标
-                    try {
-                        Object cameraPos = MappingHelper.invokeMethod(player, "getCameraPosVec", 1.0f);
-                        Object rotation = MappingHelper.invokeMethod(player, "getRotationVec", 1.0f);
-                        if (cameraPos != null && rotation != null) {
-                            double rx = ((Number) MappingHelper.getFieldValue(rotation, "x", null)).doubleValue();
-                            double ry = ((Number) MappingHelper.getFieldValue(rotation, "y", null)).doubleValue();
-                            double rz = ((Number) MappingHelper.getFieldValue(rotation, "z", null)).doubleValue();
-                            double cx = ((Number) MappingHelper.getFieldValue(cameraPos, "x", null)).doubleValue();
-                            double cy = ((Number) MappingHelper.getFieldValue(cameraPos, "y", null)).doubleValue();
-                            double cz = ((Number) MappingHelper.getFieldValue(cameraPos, "z", null)).doubleValue();
+                    if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                        blockPos = MappingHelper.invokeMethod(target, "getBlockPos");
+                        side = MappingHelper.invokeMethod(target, "getSide");
+                    } else if (isArmorStand && targetEntity != null) {
+                        blockPos = MappingHelper.invokeMethod(targetEntity, "getBlockPos");
+                        side = MappingHelper.getEnumConstant("Direction", "UP");
+                    } else if (!isEntity) {
+                        // 仅在非实体指向时尝试虚空标记
+                        try {
+                            Object cameraPos = MappingHelper.invokeMethod(player, "getCameraPosVec", 1.0f);
+                            Object rotation = MappingHelper.invokeMethod(player, "getRotationVec", 1.0f);
+                            if (cameraPos != null && rotation != null) {
+                                double rx = ((Number) MappingHelper.getFieldValue(rotation, "x", null)).doubleValue();
+                                double ry = ((Number) MappingHelper.getFieldValue(rotation, "y", null)).doubleValue();
+                                double rz = ((Number) MappingHelper.getFieldValue(rotation, "z", null)).doubleValue();
+                                double cx = ((Number) MappingHelper.getFieldValue(cameraPos, "x", null)).doubleValue();
+                                double cy = ((Number) MappingHelper.getFieldValue(cameraPos, "y", null)).doubleValue();
+                                double cz = ((Number) MappingHelper.getFieldValue(cameraPos, "z", null)).doubleValue();
 
-                            double reach = 4.5;
-                            int bx = (int) Math.floor(cx + rx * reach);
-                            int by = (int) Math.floor(cy + ry * reach);
-                            int bz = (int) Math.floor(cz + rz * reach);
-                            blockPos = MappingHelper.getClass("BlockPos").getConstructor(int.class, int.class, int.class).newInstance(bx, by, bz);
-                            side = MappingHelper.getEnumConstant("Direction", "UP");
-                        }
-                    } catch (Exception ignored) {}
-                }
-
-                if (blockPos != null && side != null) {
-                    try {
-                        MappingHelper.invokeMethod(im, "attackBlock", blockPos, side);
-                    } catch (Exception e) {
-                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, blockPos.getClass(), side.getClass());
-                        if (m != null) { m.setAccessible(true); m.invoke(im, blockPos, side); }
+                                double reach = 4.5;
+                                int bx = (int) Math.floor(cx + rx * reach);
+                                int by = (int) Math.floor(cy + ry * reach);
+                                int bz = (int) Math.floor(cz + rz * reach);
+                                blockPos = MappingHelper.getClass("BlockPos").getConstructor(int.class, int.class, int.class).newInstance(bx, by, bz);
+                                side = MappingHelper.getEnumConstant("Direction", "UP");
+                            }
+                        } catch (Throwable ignored) {}
                     }
-                }
+
+                    if (blockPos != null && side != null) {
+                        try {
+                            MappingHelper.invokeMethod(im, "attackBlock", blockPos, side);
+                        } catch (Throwable e) {
+                            try {
+                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, blockPos.getClass(), side.getClass());
+                                if (m != null) { m.setAccessible(true); m.invoke(im, blockPos, side); }
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+                } catch (Throwable ignored) {}
             }
 
-            // 6. 实体伤害补偿 (非盔甲架)
+            // 6. 实体补偿 (非盔甲架)
             if (!isArmorStand && targetEntity != null) {
-                try { MappingHelper.setFieldValue(targetEntity, "field_6008", 0); } catch (Exception ignored) {}
-                try { MappingHelper.setFieldValue(targetEntity, "field_6007", 0); } catch (Exception ignored) {}
-                if (im != null) {
-                    try { MappingHelper.invokeMethod(im, "attackEntity", player, targetEntity); } catch (Exception ignored) {}
-                }
+                try {
+                    MappingHelper.setFieldValue(targetEntity, "field_6008", 0);
+                    MappingHelper.setFieldValue(targetEntity, "field_6007", 0);
+                    MappingHelper.invokeMethod(im, "attackEntity", player, targetEntity);
+                } catch (Throwable ignored) {}
             }
 
-            // 7. 强制触发挥手 (视觉反馈)
+            // 7. 挥手动效 (兜底触发)
             if (mainHand != null) {
                 try {
                     MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                } catch (Exception e) {
-                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(player.getClass(), null, mainHand.getClass());
-                    if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
+                } catch (Throwable e) {
+                    try {
+                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(player.getClass(), null, mainHand.getClass());
+                        if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
+                    } catch (Throwable ignored) {}
                 }
             }
 
             resetAttackCooldown(client);
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
     }
 
     private static void triggerItemUse(Object client, Object player) {
@@ -423,15 +441,18 @@ public class AutomationManager {
                 try { MappingHelper.setFieldValue(client, f, 0); } catch (Exception ignored) {}
             }
 
-            // 扫描任何看起来像冷却或计数器的 int 字段，全部置零以强制触发
+            // 精准重置：仅针对疑似冷却的字段，避免误伤其他关键 int
             try {
                 for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
-                    if (f.getType() == int.class && (f.getName().contains("Cooldown") || f.getName().contains("field_175") || f.getName().contains("field_172"))) {
-                        f.setAccessible(true);
-                        f.setInt(client, 0);
+                    if (f.getType() == int.class) {
+                        String name = f.getName();
+                        if (name.contains("Cooldown") || name.equals("field_1752") || name.equals("field_1755") || name.equals("field_1753")) {
+                            f.setAccessible(true);
+                            f.setInt(client, 0);
+                        }
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Throwable ignored) {}
 
             Object player = CommandDispatcher.getClientPlayer();
             if (player != null) {
