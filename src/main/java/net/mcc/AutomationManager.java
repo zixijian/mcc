@@ -255,7 +255,7 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            // 1. 攻击前置：彻底重置冷却，并强制蓄力满 (100) 以确保单次攻击也有伤害和横扫
+            // 1. 攻击前置：彻底重置冷却与锁定满蓄力 (100) 以确保 100% 触发横扫和全额伤害
             resetAttackCooldown(client);
             try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
@@ -265,7 +265,7 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 2. 领地标记补偿 (仅针对方块)：模拟鼠标左键点击，且不阻断后续 doAttack
+            // 2. 针对 1.21.11 的木斧标记补偿 (方块优先)
             Class<?> blockHitResultClass = null;
             try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
             if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
@@ -275,7 +275,7 @@ public class AutomationManager {
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
                             try {
-                                MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0); // 1.21.11 优先
+                                MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0); // 1.21.11/1.21.4 专用
                             } catch (Exception e) {
                                 try { MappingHelper.invokeMethod(im, "attackBlock", pos, side); } catch (Exception ignored) {}
                             }
@@ -284,7 +284,7 @@ public class AutomationManager {
                 }
             }
 
-            // 3. 原生逻辑调用：触发挥手包、标准攻击事件和横扫判定
+            // 3. 原生逻辑调用：触发挥手包和攻击事件
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
             } catch (Exception e) {
@@ -297,10 +297,10 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 4. 蓄力恢复：doAttack 内部会调用 resetLastAttackedTicks()，我们需要在这里再次补回 100，确保高频下每一下都是满威力
+            // 4. 再次锁定蓄力：防止 doAttack 内部重置蓄力导致下一帧或当前帧补偿攻击变为弱攻击
             try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
-            // 5. 实体补偿 (如果 doAttack 被服务端跳过或高频伤害丢失)
+            // 5. 实体补偿 (确保每一帧高频攻击都能在服务端产生伤害效果)
             if (target != null) {
                 Class<?> entityHitResultClass = null;
                 try { entityHitResultClass = MappingHelper.getClass("EntityHitResult"); } catch (Exception ignored) {}
