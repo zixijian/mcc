@@ -210,61 +210,47 @@ public class AutomationManager {
             // 强制蓄力条始终显示为满值 (UI 表现)
             try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
-            if (attackFreq >= 0 || attackOnce) {
+            if (attackOnce) {
                 internalAttackTicks++;
+                // 单次攻击判定逻辑：遵循 1.0f + 1 tick 延迟
+                float progress = 0f;
+                try {
+                    float ppt = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgressPerTick")).floatValue();
+                    progress = internalAttackTicks * ppt;
+                    float nativeProgress = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgress", 0.0f)).floatValue();
+                    if (nativeProgress > progress) progress = nativeProgress;
+                } catch (Exception e) { progress = internalAttackTicks * 0.1f; }
 
-                // 统一判定逻辑：无论单次还是持续攻击(atk 0)，都遵循 1.0f + 1 tick 延迟
-                if (attackOnce || attackFreq == 0) {
-                    float progress = 0f;
-                    try {
-                        // 尝试动态计算
-                        float attackSpeed = 4.0f;
-                        try {
-                            Object attr = MappingHelper.getFieldValue(null, "GENERIC_ATTACK_SPEED", MappingHelper.getClass("EntityAttributes"));
-                            attackSpeed = ((Number) MappingHelper.invokeMethod(player, "getAttributeValue", attr)).floatValue();
-                        } catch (Exception ignored) {}
-
-                        float cooldownTicks = 20.0f / attackSpeed;
-                        progress = internalAttackTicks / cooldownTicks;
-
-                        // 双重校验：尝试调用原生的 getAttackCooldownProgress (method_7261)
-                        try {
-                            float nativeProgress = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgress", 0.0f)).floatValue();
-                            if (nativeProgress > progress) progress = nativeProgress;
-                        } catch (Exception ignored) {}
-                    } catch (Exception e) {
-                        progress = internalAttackTicks * 0.1f;
-                    }
-
-                    if (waitTicksAfterHalfCharge == -1 && progress >= 1.0f) {
-                        waitTicksAfterHalfCharge = 1;
-                    }
-
-                    if (waitTicksAfterHalfCharge > 0) {
-                        waitTicksAfterHalfCharge--;
-                    } else if (waitTicksAfterHalfCharge == 0) {
-                        resetAttackCooldown(client);
-                        triggerAttack(client, player);
-                        internalAttackTicks = 0;
-                        waitTicksAfterHalfCharge = -1;
-                        attackOnce = false;
-                    }
+                if (waitTicksAfterHalfCharge == -1 && progress >= 1.0f) {
+                    waitTicksAfterHalfCharge = 1;
                 }
-            } else {
-                internalAttackTicks = 0;
-                waitTicksAfterHalfCharge = -1;
-            }
 
-            if (attackFreq > 0) {
+                if (waitTicksAfterHalfCharge > 0) {
+                    waitTicksAfterHalfCharge--;
+                } else if (waitTicksAfterHalfCharge == 0) {
+                    resetAttackCooldown(client);
+                    triggerAttack(client, player);
+                    internalAttackTicks = 0;
+                    waitTicksAfterHalfCharge = -1;
+                    attackOnce = false;
+                }
+            } else if (attackFreq == 0) {
+                // 持续攻击：还原主分支逻辑，不加内部延迟
+                resetAttackCooldown(client);
+                triggerAttack(client, player);
+                internalAttackTicks = 0;
+            } else if (attackFreq > 0) {
+                // 频率攻击：还原主分支逻辑
                 if (--attackTimer <= 0) {
                     resetAttackCooldown(client);
                     triggerAttack(client, player);
                     attackTimer = attackFreq;
                     internalAttackTicks = 0;
-                    waitTicksAfterHalfCharge = -1;
                 }
             } else {
                 attackTimer = 0;
+                internalAttackTicks = 0;
+                waitTicksAfterHalfCharge = -1;
             }
 
             // 3. 使用逻辑
