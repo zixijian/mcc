@@ -255,7 +255,7 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            // 1. 攻击前置：彻底重置冷却与锁定满蓄力 (100) 以确保 100% 触发横扫和全额伤害
+            // 1. 彻底重置冷却与蓄力锁定 (核心确保满蓄力攻击)
             resetAttackCooldown(client);
             try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
@@ -265,7 +265,7 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 2. 针对 1.21.11 的木斧标记补偿 (方块优先)
+            // 2. 针对 1.21.11 的木斧标记补偿 (直接模拟左键点击方块，确保不被后续阻断)
             Class<?> blockHitResultClass = null;
             try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
             if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
@@ -275,7 +275,7 @@ public class AutomationManager {
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
                             try {
-                                MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0); // 1.21.11/1.21.4 专用
+                                MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0);
                             } catch (Exception e) {
                                 try { MappingHelper.invokeMethod(im, "attackBlock", pos, side); } catch (Exception ignored) {}
                             }
@@ -284,7 +284,7 @@ public class AutomationManager {
                 }
             }
 
-            // 3. 原生逻辑调用：触发挥手包和攻击事件
+            // 3. 执行原生攻击逻辑 (触发 AttackEntityCallback/AttackBlockCallback 事件)
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
             } catch (Exception e) {
@@ -297,39 +297,10 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 4. 再次锁定蓄力：防止 doAttack 内部重置蓄力导致下一帧或当前帧补偿攻击变为弱攻击
+            // 4. 再次补回蓄力 (doAttack 内部会重置它，此处锁定以支持超高频)
             try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
-            // 5. 实体补偿 (确保每一帧高频攻击都能在服务端产生伤害效果)
-            if (target != null) {
-                Class<?> entityHitResultClass = null;
-                try { entityHitResultClass = MappingHelper.getClass("EntityHitResult"); } catch (Exception ignored) {}
-                if (entityHitResultClass != null && entityHitResultClass.isInstance(target)) {
-                    Object entity = null;
-                    try { entity = MappingHelper.invokeMethod(target, "getEntity"); } catch (Exception ignored) {}
-                    if (entity == null) {
-                        try { entity = MappingHelper.invokeMethod(target, "method_17770"); } catch (Exception ignored) {}
-                    }
-                    if (entity != null) {
-                        // 强制重置目标无敌时间，确保每一发都有伤害
-                        try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
-                        try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {}
-                        try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {}
-
-                        if (im != null) {
-                            try {
-                                MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                            } catch (Exception e) {
-                                // 结构化补偿
-                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, player.getClass(), entity.getClass());
-                                if (m != null) { m.setAccessible(true); m.invoke(im, player, entity); }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 4. 强制视觉反馈：重置挥手动画以支持高频 (仅在需要时重置，防止动画过快看起来不顺畅)
+            // 5. 强制视觉反馈：重置挥手动画以支持高频
             if (mainHand != null) {
                 try {
                     boolean isSwinging = false;

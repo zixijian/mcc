@@ -13,8 +13,10 @@
   },
   "license": "MIT",
   "icon": "assets/mcc/icon.png",
-  "environment": "client",
   "entrypoints": {
+    "main": [
+      "net.mcc.MCCMod"
+    ],
     "client": [
       "net.mcc.MCCMod"
     ]
