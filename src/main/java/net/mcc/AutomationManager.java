@@ -216,9 +216,9 @@ public class AutomationManager {
             // 强制蓄力条始终显示为满值 (置于逻辑后方，防止被 doAttack 瞬间重置导致的视觉闪烁)
             try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
-            // 统一判定逻辑：无论单次还是持续攻击，都必须经过 0.5f + 2 tick 延迟以确保有效性
+            // 统一判定逻辑：无论单次还是持续攻击，都必须经过 1.0f + 1 tick 延迟以确保有效性
             if (attackOnce || attackFreq == 0) {
-                // 智能高频攻击：0.5f 蓄力 + 2 tick 延迟
+                // 智能高频攻击：1.0f 蓄力 + 1 tick 延迟
                 float progress = 1.0f;
                 try {
                     // getAttackCooldownProgressPerTick: 1.21.x -> method_26352
@@ -226,12 +226,12 @@ public class AutomationManager {
                     float progressPerTick = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgressPerTick")).floatValue();
                     if (progressPerTick > 0) progress = internalAttackTicks * progressPerTick;
                 } catch (Exception e) {
-                    // 降级方案：假设 5 ticks 达到 0.5f (常见攻速)
+                    // 降级方案：假设 10 ticks 达到 1.0f (常见攻速)
                     progress = internalAttackTicks * 0.1f;
                 }
 
-                if (waitTicksAfterHalfCharge == -1 && progress >= 0.5f) {
-                    waitTicksAfterHalfCharge = 2;
+                if (waitTicksAfterHalfCharge == -1 && progress >= 1.0f) {
+                    waitTicksAfterHalfCharge = 1;
                 }
 
                 if (waitTicksAfterHalfCharge > 0) {
