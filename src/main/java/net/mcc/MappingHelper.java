@@ -163,6 +163,7 @@ public class MappingHelper {
         MAPPINGS.put("getStyle", "method_10855");
         MAPPINGS.put("getRgb", "method_35842"); // TextColor.getRgb
         MAPPINGS.put("isAccepted", "method_23665");
+        MAPPINGS.put("getAttackCooldownProgressPerTick", "method_26352");
     }
 
     public static String map(String name) {

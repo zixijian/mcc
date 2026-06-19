@@ -11,6 +11,8 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
 
+    private static int internalAttackTicks = 0;
+    private static int waitTicksAfterHalfCharge = -1;
 
     private static Float lockedPitch = null;
     private static Float lockedYaw = null;
@@ -207,20 +209,50 @@ public class AutomationManager {
             if (attackFreq >= 0 || attackOnce) {
                 // 固定永久蓄满力: field_6010 (lastAttackedTicks)
                 try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+                internalAttackTicks++;
+            } else {
+                internalAttackTicks = 0;
+                waitTicksAfterHalfCharge = -1;
             }
 
             if (attackOnce) {
                 resetAttackCooldown(client);
                 triggerAttack(client, player);
                 attackOnce = false;
+                internalAttackTicks = 0;
+                waitTicksAfterHalfCharge = -1;
             } else if (attackFreq == 0) {
-                resetAttackCooldown(client);
-                triggerAttack(client, player);
+                // 智能高频攻击：0.5f 蓄力 + 2 tick 延迟
+                float progress = 1.0f;
+                try {
+                    // getAttackCooldownProgressPerTick: 1.21.x -> method_26352
+                    // 该方法返回每 tick 增加的蓄力进度 (例如攻速 4.0 时返回 0.2)
+                    float progressPerTick = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgressPerTick")).floatValue();
+                    if (progressPerTick > 0) progress = internalAttackTicks * progressPerTick;
+                } catch (Exception e) {
+                    // 降级方案：假设 5 ticks 达到 0.5f (常见攻速)
+                    progress = internalAttackTicks * 0.1f;
+                }
+
+                if (waitTicksAfterHalfCharge == -1 && progress >= 0.5f) {
+                    waitTicksAfterHalfCharge = 2;
+                }
+
+                if (waitTicksAfterHalfCharge > 0) {
+                    waitTicksAfterHalfCharge--;
+                } else if (waitTicksAfterHalfCharge == 0) {
+                    resetAttackCooldown(client);
+                    triggerAttack(client, player);
+                    internalAttackTicks = 0;
+                    waitTicksAfterHalfCharge = -1;
+                }
             } else if (attackFreq > 0) {
                 if (--attackTimer <= 0) {
                     resetAttackCooldown(client);
                     triggerAttack(client, player);
                     attackTimer = attackFreq;
+                    internalAttackTicks = 0;
+                    waitTicksAfterHalfCharge = -1;
                 }
             } else {
                 attackTimer = 0;
@@ -262,70 +294,45 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             boolean acted = false;
 
-            // 1. 深度补充：显式触发 attackBlock (圈地标记的核心)
+            // 根据准星目标决定攻击逻辑，解决 1.21.11 下木斧标记问题
             if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                // 准星指向方块：仅调用 attackBlock (模拟左键，确保 WorldGuard 触发)
                 if (im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            // 尝试多种方法签名以确保 1.21.11 兼容
-                            try {
-                                MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                                acted = true;
-                            } catch (Exception e) {
-                                // 暴力结构化查找: (BlockPos, Direction) -> boolean/void
-                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
-                                if (m != null) {
-                                    m.setAccessible(true);
-                                    m.invoke(im, pos, side);
-                                    acted = true;
-                                }
-                            }
+                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            acted = true;
                         }
                     } catch (Exception ignored) {}
                 }
-            }
-
-            // 2. 原生 doAttack (触发挥手和常规攻击逻辑)
-            try {
-                MappingHelper.invokeMethod(client, "doAttack");
-                acted = true;
-            } catch (Exception e) {
-                // 暴力结构化查找 doAttack (无参)
+            } else {
+                // 准星指向实体或空气：调用常规 doAttack
                 try {
-                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
-                    if (m != null && m.getName().startsWith("method_15")) { // 缩小范围
-                        m.setAccessible(true);
-                        m.invoke(client);
-                        acted = true;
-                    }
+                    MappingHelper.invokeMethod(client, "doAttack");
+                    acted = true;
                 } catch (Exception ignored) {}
-            }
 
-            // 3. 显式补偿攻击实体
-            if (!acted && target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
-                if (im != null) {
-                    Object entity = MappingHelper.invokeMethod(target, "getEntity");
-                    if (entity != null) {
-                        try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
-                        MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                        acted = true;
+                // 如果 doAttack 失败且指向实体，尝试显式补偿攻击
+                if (!acted && target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
+                    if (im != null) {
+                        Object entity = MappingHelper.invokeMethod(target, "getEntity");
+                        if (entity != null) {
+                            // 暴力重置目标无敌时间（如果允许）
+                            try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
+                            MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                            acted = true;
+                        }
                     }
                 }
             }
 
-            // 4. 强制触发挥手 (确保有视觉反馈)
+            // 强制同步挥手动画，确保视觉反馈
             if (mainHand != null) {
                 try {
                     MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                } catch (Exception e) {
-                    // 暴力查找 swingHand (Hand)
-                    try {
-                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(player.getClass(), null, mainHand.getClass());
-                        if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
-                    } catch (Exception ignored) {}
-                }
+                } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
     }
