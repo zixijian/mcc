@@ -11,6 +11,8 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
 
+    private static int internalAttackTicks = 0;
+    private static int waitTicksAfterHalfCharge = -1;
 
     private static Float lockedPitch = null;
     private static Float lockedYaw = null;
@@ -19,6 +21,7 @@ public class AutomationManager {
         if (!hasArgs) {
             attackOnce = true;
             attackTimer = 0; // 重置计时器
+            internalAttackTicks = 100; // 让单次点击能立即进入延迟判定
             CommandDispatcher.addFeedback("§a执行攻击一次");
             return;
         }
@@ -204,26 +207,50 @@ public class AutomationManager {
             }
 
             // 2. 攻击逻辑
-            if (attackFreq >= 0 || attackOnce) {
-                // 固定永久蓄满力: field_6010 (lastAttackedTicks)
-                try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
-            }
+            // 强制蓄力条始终显示为满值 (UI 表现)
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
             if (attackOnce) {
-                resetAttackCooldown(client);
-                triggerAttack(client, player);
-                attackOnce = false;
+                internalAttackTicks++;
+                // 单次攻击判定逻辑：遵循 1.0f + 1 tick 延迟
+                float progress = 0f;
+                try {
+                    float ppt = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgressPerTick")).floatValue();
+                    progress = internalAttackTicks * ppt;
+                    float nativeProgress = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgress", 0.0f)).floatValue();
+                    if (nativeProgress > progress) progress = nativeProgress;
+                } catch (Exception e) { progress = internalAttackTicks * 0.1f; }
+
+                if (waitTicksAfterHalfCharge == -1 && progress >= 1.0f) {
+                    waitTicksAfterHalfCharge = 1;
+                }
+
+                if (waitTicksAfterHalfCharge > 0) {
+                    waitTicksAfterHalfCharge--;
+                } else if (waitTicksAfterHalfCharge == 0) {
+                    resetAttackCooldown(client);
+                    triggerAttack(client, player);
+                    internalAttackTicks = 0;
+                    waitTicksAfterHalfCharge = -1;
+                    attackOnce = false;
+                }
             } else if (attackFreq == 0) {
+                // 持续攻击：还原主分支逻辑，不加内部延迟
                 resetAttackCooldown(client);
                 triggerAttack(client, player);
+                internalAttackTicks = 0;
             } else if (attackFreq > 0) {
+                // 频率攻击：还原主分支逻辑
                 if (--attackTimer <= 0) {
                     resetAttackCooldown(client);
                     triggerAttack(client, player);
                     attackTimer = attackFreq;
+                    internalAttackTicks = 0;
                 }
             } else {
                 attackTimer = 0;
+                internalAttackTicks = 0;
+                waitTicksAfterHalfCharge = -1;
             }
 
             // 3. 使用逻辑
@@ -260,50 +287,29 @@ public class AutomationManager {
 
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-            boolean acted = false;
 
-            // 1. 深度补充：显式触发 attackBlock (圈地标记的核心)
+            // 1. 显式触发 attackBlock (WorldGuard 标记的核心)
+            // 恢复同时调用模式，因为拆分逻辑导致标记失效
             if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
                 if (im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            // 尝试多种方法签名以确保 1.21.11 兼容
-                            try {
-                                MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                                acted = true;
-                            } catch (Exception e) {
-                                // 暴力结构化查找: (BlockPos, Direction) -> boolean/void
-                                java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
-                                if (m != null) {
-                                    m.setAccessible(true);
-                                    m.invoke(im, pos, side);
-                                    acted = true;
-                                }
-                            }
+                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
                         }
                     } catch (Exception ignored) {}
                 }
             }
 
-            // 2. 原生 doAttack (触发挥手和常规攻击逻辑)
+            // 2. 调用原生 doAttack (触发伤害、横扫和挥手发包)
+            boolean acted = false;
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
                 acted = true;
-            } catch (Exception e) {
-                // 暴力结构化查找 doAttack (无参)
-                try {
-                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(client.getClass(), null);
-                    if (m != null && m.getName().startsWith("method_15")) { // 缩小范围
-                        m.setAccessible(true);
-                        m.invoke(client);
-                        acted = true;
-                    }
-                } catch (Exception ignored) {}
-            }
+            } catch (Exception ignored) {}
 
-            // 3. 显式补偿攻击实体
+            // 3. 针对实体的补充逻辑
             if (!acted && target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
                 if (im != null) {
                     Object entity = MappingHelper.invokeMethod(target, "getEntity");
@@ -315,18 +321,14 @@ public class AutomationManager {
                 }
             }
 
-            // 4. 强制触发挥手 (确保有视觉反馈)
+            // 4. 强制视觉同步
             if (mainHand != null) {
                 try {
                     MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                } catch (Exception e) {
-                    // 暴力查找 swingHand (Hand)
-                    try {
-                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(player.getClass(), null, mainHand.getClass());
-                        if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
-                    } catch (Exception ignored) {}
-                }
+                } catch (Exception ignored) {}
             }
+            // 攻击后立即再次锁定蓄力，防止在同一 tick 内被重置
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 
