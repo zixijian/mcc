@@ -255,8 +255,9 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            // 预先彻底重置冷却和满蓄力
+            // 1. 攻击前置：彻底重置冷却，并强制蓄力满 (100) 以确保单次攻击也有伤害和横扫
             resetAttackCooldown(client);
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
@@ -264,7 +265,7 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 针对 1.21.11 等环境的木斧标记补偿 (核心：显式调用以模拟左键点击方块)
+            // 2. 领地标记补偿 (仅针对方块)：模拟鼠标左键点击，且不阻断后续 doAttack
             Class<?> blockHitResultClass = null;
             try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
             if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
@@ -273,23 +274,17 @@ public class AutomationManager {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            // 优先尝试三参数签名 (BlockPos, Direction, int) 适配 1.21.4/1.21.11
                             try {
-                                MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0);
+                                MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0); // 1.21.11 优先
                             } catch (Exception e) {
-                                try {
-                                    MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                                } catch (Exception e2) {
-                                    java.lang.reflect.Method m = MappingHelper.findMethodByStructure(im.getClass(), null, pos.getClass(), side.getClass());
-                                    if (m != null) { m.setAccessible(true); m.invoke(im, pos, side); }
-                                }
+                                try { MappingHelper.invokeMethod(im, "attackBlock", pos, side); } catch (Exception ignored) {}
                             }
                         }
                     } catch (Exception ignored) {}
                 }
             }
 
-            // 2. 调用原生 doAttack (核心逻辑：处理攻击状态、挥手包发送)
+            // 3. 原生逻辑调用：触发挥手包、标准攻击事件和横扫判定
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
             } catch (Exception e) {
@@ -302,7 +297,10 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 3. 实体补偿与伤害确保
+            // 4. 蓄力恢复：doAttack 内部会调用 resetLastAttackedTicks()，我们需要在这里再次补回 100，确保高频下每一下都是满威力
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+
+            // 5. 实体补偿 (如果 doAttack 被服务端跳过或高频伤害丢失)
             if (target != null) {
                 Class<?> entityHitResultClass = null;
                 try { entityHitResultClass = MappingHelper.getClass("EntityHitResult"); } catch (Exception ignored) {}
