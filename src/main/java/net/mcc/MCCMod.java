@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 核心入口类。
- * 使用反射与 Fabric 事件系统挂钩，完全隔离 Minecraft 类以防止类加载崩溃 (NoClassDefFoundError)。
+ * 使用反射与 Fabric 事件系统挂钩，完全隔离 Minecraft 类以防止类加载崩溃。
  */
 public class MCCMod implements ClientModInitializer, ModInitializer {
     public static final String MOD_ID = "mcc";
@@ -20,7 +20,7 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("MCC Mod Common Initialized (Reflective Event Mode)");
+        LOGGER.info("MCC Mod Common Initialized");
         try {
             registerAttackEvents();
         } catch (Throwable e) {
@@ -33,8 +33,9 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
         Class<?> attackEntityCallback = Class.forName("net.fabricmc.fabric.api.event.player.AttackEntityCallback");
         Class<?> attackBlockCallback = Class.forName("net.fabricmc.fabric.api.event.player.AttackBlockCallback");
 
-        // 1. 注册 AttackEntityCallback (参数：PlayerEntity, World, Hand, Entity, EntityHitResult)
+        // 1. 注册 AttackEntityCallback (参数接口本身就是回调类)
         registerFabricEvent(attackEntityCallback, (proxy, method, args) -> {
+            // Callback 方法名通常为 interact
             if (method.getName().equals("interact")) {
                 Object player = args[0];
                 Object world = args[1];
@@ -45,38 +46,32 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
                         MappingHelper.setFieldValue(player, "field_6010", 100);
                     } catch (Throwable ignored) {}
 
-                    // 清除受击无敌帧 (实现高频伤害)
+                    // 移除目标受击无敌帧 (实现高频伤害)
                     if (entity != null) {
                         try {
                             boolean isClient = true;
-                            // field_9236 对应 World.isClient
-                            Object isClientObj = null;
-                            try { isClientObj = MappingHelper.getFieldValue(world, "field_9236", null); } catch (Exception ignored) {}
-                            if (isClientObj instanceof Boolean) {
-                                isClient = (Boolean) isClientObj;
-                            } else {
-                                // fallback 使用映射名或方法
-                                try { isClient = (boolean) MappingHelper.invokeMethod(world, "isClient"); } catch (Exception ignored) {}
+                            // 探测是否为客户端
+                            try {
+                                Object isClientObj = MappingHelper.getFieldValue(world, "isClient", null);
+                                if (isClientObj instanceof Boolean) isClient = (Boolean) isClientObj;
+                            } catch (Exception e) {
+                                try { isClient = (boolean) MappingHelper.invokeMethod(world, "isClient"); } catch (Exception ignored2) {}
                             }
 
                             if (!isClient) {
+                                // 服务端逻辑：延迟到 tick 末尾清除，确保当前攻击判定完成
                                 Object server = null;
                                 try { server = MappingHelper.invokeMethod(world, "getServer"); } catch (Exception ignored2) {}
                                 if (server != null) {
                                     final Object targetEntity = entity;
                                     java.lang.reflect.Method execute = server.getClass().getMethod("execute", Runnable.class);
                                     execute.invoke(server, (Runnable) () -> {
-                                        try {
-                                            MappingHelper.setFieldValue(targetEntity, "field_6008", 0);
-                                            MappingHelper.setFieldValue(targetEntity, "hurtResistantTime", 0);
-                                        } catch (Throwable ignored3) {}
+                                        clearInvulnerability(targetEntity);
                                     });
                                 }
                             } else {
-                                try {
-                                    MappingHelper.setFieldValue(entity, "field_6008", 0);
-                                    MappingHelper.setFieldValue(entity, "hurtResistantTime", 0);
-                                } catch (Throwable ignored) {}
+                                // 客户端逻辑：直接清除以支持预测
+                                clearInvulnerability(entity);
                             }
                         } catch (Throwable ignored) {}
                     }
@@ -85,12 +80,14 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
             return ActionResultStatic.PASS();
         });
 
-        // 2. 注册 AttackBlockCallback (参数：PlayerEntity, World, Hand, BlockPos, Direction)
+        // 2. 注册 AttackBlockCallback
         registerFabricEvent(attackBlockCallback, (proxy, method, args) -> {
             if (method.getName().equals("interact")) {
                 Object player = args[0];
                 if (player != null) {
-                    try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Throwable ignored) {}
+                    try {
+                        MappingHelper.setFieldValue(player, "field_6010", 100);
+                    } catch (Throwable ignored) {}
                 }
             }
             return ActionResultStatic.PASS();
@@ -100,9 +97,18 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
     private void registerFabricEvent(Class<?> eventClass, java.lang.reflect.InvocationHandler handler) throws Exception {
         java.lang.reflect.Field eventField = eventClass.getField("EVENT");
         Object eventInstance = eventField.get(null);
-        // Fabric API 的 Callback 接口通常就是类本身
+        // 动态代理注册
         Object proxy = java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{eventClass}, handler);
         eventInstance.getClass().getMethod("register", eventClass).invoke(eventInstance, proxy);
+    }
+
+    private static void clearInvulnerability(Object entity) {
+        try {
+            MappingHelper.setFieldValue(entity, "field_6008", 0); // hurtResistantTime
+            MappingHelper.setFieldValue(entity, "hurtResistantTime", 0);
+            MappingHelper.setFieldValue(entity, "field_6007", 0); // hurtTime
+            MappingHelper.setFieldValue(entity, "hurtTime", 0);
+        } catch (Throwable ignored) {}
     }
 
     private static class ActionResultStatic {

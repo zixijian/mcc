@@ -255,9 +255,8 @@ public class AutomationManager {
 
     private static void triggerAttack(Object client, Object player) {
         try {
-            // 1. 彻底重置冷却与蓄力锁定 (核心确保满蓄力攻击)
+            // 1. 攻击前置：彻底重置客户端冷却
             resetAttackCooldown(client);
-            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
 
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
@@ -265,7 +264,7 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 2. 针对 1.21.11 的木斧标记补偿 (直接模拟左键点击方块，确保不被后续阻断)
+            // 2. 针对 1.21.11 的木斧标记补偿 (核心：显式调用以模拟左键点击方块)
             Class<?> blockHitResultClass = null;
             try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
             if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
@@ -274,6 +273,7 @@ public class AutomationManager {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
+                            // 优先尝试三参数签名 (BlockPos, Direction, int) 适配 1.21.4/1.21.11
                             try {
                                 MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0);
                             } catch (Exception e) {
@@ -284,7 +284,10 @@ public class AutomationManager {
                 }
             }
 
-            // 3. 执行原生攻击逻辑 (触发 AttackEntityCallback/AttackBlockCallback 事件)
+            // 3. 锁定满蓄力 (field_6010 = 100) 以确保 100% 触发全额伤害和横扫之刃
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+
+            // 4. 执行原生 doAttack (触发 MCCMod 中的 AttackEntityCallback 事件，实现无敌帧清除)
             try {
                 MappingHelper.invokeMethod(client, "doAttack");
             } catch (Exception e) {
