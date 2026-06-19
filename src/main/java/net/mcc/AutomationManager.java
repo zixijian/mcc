@@ -207,21 +207,17 @@ public class AutomationManager {
 
             // 2. 攻击逻辑
             if (attackFreq >= 0 || attackOnce) {
-                // 固定永久蓄满力: field_6010 (lastAttackedTicks)
-                try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
                 internalAttackTicks++;
             } else {
                 internalAttackTicks = 0;
                 waitTicksAfterHalfCharge = -1;
             }
 
-            if (attackOnce) {
-                resetAttackCooldown(client);
-                triggerAttack(client, player);
-                attackOnce = false;
-                internalAttackTicks = 0;
-                waitTicksAfterHalfCharge = -1;
-            } else if (attackFreq == 0) {
+            // 强制蓄力条始终显示为满值 (置于逻辑后方，防止被 doAttack 瞬间重置导致的视觉闪烁)
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+
+            // 统一判定逻辑：无论单次还是持续攻击，都必须经过 0.5f + 2 tick 延迟以确保有效性
+            if (attackOnce || attackFreq == 0) {
                 // 智能高频攻击：0.5f 蓄力 + 2 tick 延迟
                 float progress = 1.0f;
                 try {
@@ -245,6 +241,7 @@ public class AutomationManager {
                     triggerAttack(client, player);
                     internalAttackTicks = 0;
                     waitTicksAfterHalfCharge = -1;
+                    attackOnce = false; // 执行完单次攻击后重置
                 }
             } else if (attackFreq > 0) {
                 if (--attackTimer <= 0) {
@@ -292,48 +289,48 @@ public class AutomationManager {
 
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-            boolean acted = false;
 
-            // 根据准星目标决定攻击逻辑，解决 1.21.11 下木斧标记问题
+            // 1. 显式触发 attackBlock (WorldGuard 标记的核心)
+            // 恢复同时调用模式，因为拆分逻辑导致标记失效
             if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                // 准星指向方块：仅调用 attackBlock (模拟左键，确保 WorldGuard 触发)
                 if (im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
                             MappingHelper.invokeMethod(im, "attackBlock", pos, side);
-                            acted = true;
                         }
                     } catch (Exception ignored) {}
                 }
-            } else {
-                // 准星指向实体或空气：调用常规 doAttack
-                try {
-                    MappingHelper.invokeMethod(client, "doAttack");
-                    acted = true;
-                } catch (Exception ignored) {}
+            }
 
-                // 如果 doAttack 失败且指向实体，尝试显式补偿攻击
-                if (!acted && target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
-                    if (im != null) {
-                        Object entity = MappingHelper.invokeMethod(target, "getEntity");
-                        if (entity != null) {
-                            // 暴力重置目标无敌时间（如果允许）
-                            try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
-                            MappingHelper.invokeMethod(im, "attackEntity", player, entity);
-                            acted = true;
-                        }
+            // 2. 调用原生 doAttack (触发伤害、横扫和挥手发包)
+            boolean acted = false;
+            try {
+                MappingHelper.invokeMethod(client, "doAttack");
+                acted = true;
+            } catch (Exception ignored) {}
+
+            // 3. 针对实体的补充逻辑
+            if (!acted && target != null && MappingHelper.getClass("EntityHitResult").isInstance(target)) {
+                if (im != null) {
+                    Object entity = MappingHelper.invokeMethod(target, "getEntity");
+                    if (entity != null) {
+                        try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
+                        MappingHelper.invokeMethod(im, "attackEntity", player, entity);
+                        acted = true;
                     }
                 }
             }
 
-            // 强制同步挥手动画，确保视觉反馈
+            // 4. 强制视觉同步
             if (mainHand != null) {
                 try {
                     MappingHelper.invokeMethod(player, "swingHand", mainHand);
                 } catch (Exception ignored) {}
             }
+            // 攻击后立即再次锁定蓄力，防止在同一 tick 内被重置
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 
