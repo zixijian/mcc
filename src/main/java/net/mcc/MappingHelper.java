@@ -99,6 +99,7 @@ public class MappingHelper {
         MAPPINGS.put("onGround", "field_5971");
         MAPPINGS.put("handSwinging", "field_6277");
         MAPPINGS.put("handSwingTicks", "field_6259");
+        MAPPINGS.put("isClient", "field_9236");
         MAPPINGS.put("MAIN_HAND", "field_5808");
 
         // 方法映射 (Yarn -> Intermediary)
@@ -152,6 +153,7 @@ public class MappingHelper {
         MAPPINGS.put("setPitch", "method_36457");
         MAPPINGS.put("setSprinting", "method_5735");
         MAPPINGS.put("resetLastAttackedTicks", "method_5851");
+        MAPPINGS.put("getServer", "method_8501");
         MAPPINGS.put("getId", "method_10221");
         MAPPINGS.put("getCommandDispatcher", "method_2903");
         MAPPINGS.put("getRoot", "method_8257");

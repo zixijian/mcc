@@ -178,7 +178,7 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 健壮的当前屏幕检测：任何屏幕打开时停止自动化 (包括聊天框)
+            // 健壮的当前屏幕检测：任何屏幕打开时停止自动化
             Object currentScreen = null;
             try {
                 Class<?> screenClass = MappingHelper.getClass("Screen");
@@ -191,7 +191,6 @@ public class AutomationManager {
                 try {
                     MappingHelper.invokeMethod(player, "setYaw", lockedYaw);
                     MappingHelper.invokeMethod(player, "setPitch", lockedPitch);
-                    // 同时更新渲染角度以防抖动
                     try { MappingHelper.setFieldValue(player, "field_6031", lockedYaw); } catch (Exception ignored) {}
                     try { MappingHelper.setFieldValue(player, "field_6004", lockedPitch); } catch (Exception ignored) {}
                 } catch (Exception ignored) {}
@@ -205,8 +204,11 @@ public class AutomationManager {
 
             // 2. 攻击逻辑
             if (attackFreq >= 0 || attackOnce) {
-                // 固定永久蓄满力: field_6010 (lastAttackedTicks)
-                try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+                // 维持永久锁定蓄力满状态 (100)
+                try {
+                    MappingHelper.setFieldValue(player, "field_6010", 100);
+                    MappingHelper.setFieldValue(player, "lastAttackedTicks", 100);
+                } catch (Exception ignored) {}
             }
 
             if (attackOnce) {
@@ -235,7 +237,6 @@ public class AutomationManager {
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
-                // 持续按住模式下，如果当前没有在“使用”（如吃东西、拉弓），则尝试触发
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
                 if (!isUsing) {
@@ -264,69 +265,65 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 2. 针对 1.21.11 的木斧标记补偿 (核心：显式调用以模拟左键点击方块)
+            // 2. 锁定满蓄力 (field_6010 = 100)
+            try {
+                MappingHelper.setFieldValue(player, "field_6010", 100);
+                MappingHelper.setFieldValue(player, "lastAttackedTicks", 100);
+            } catch (Exception ignored) {}
+
+            // 3. 核心判定流程
             Class<?> blockHitResultClass = null;
             try { blockHitResultClass = MappingHelper.getClass("BlockHitResult"); } catch (Exception ignored) {}
+
             if (target != null && blockHitResultClass != null && blockHitResultClass.isInstance(target)) {
+                // 分支 A: 针对方块（领地标记优先）
                 if (im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            // 优先尝试三参数签名 (BlockPos, Direction, int) 适配 1.21.4/1.21.11
+                            // 模拟点击。此时蓄力已锁定，确保第一下即触发标记。
                             try {
                                 MappingHelper.invokeMethod(im, "attackBlock", pos, side, 0);
                             } catch (Exception e) {
-                                try { MappingHelper.invokeMethod(im, "attackBlock", pos, side); } catch (Exception ignored) {}
+                                try { MappingHelper.invokeMethod(im, "attackBlock", pos, side); } catch (Exception ignored2) {}
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            } else {
+                // 分支 B: 针对实体或空气
+                try {
+                    MappingHelper.invokeMethod(client, "doAttack");
+                } catch (Exception e) {
+                    try {
+                        for (java.lang.reflect.Method m : client.getClass().getDeclaredMethods()) {
+                            if (m.getParameterCount() == 0 && (m.getName().startsWith("method_15") || m.getName().equals("doAttack"))) {
+                                m.setAccessible(true); m.invoke(client); break;
                             }
                         }
                     } catch (Exception ignored) {}
                 }
             }
 
-            // 3. 锁定满蓄力 (field_6010 = 100) 以确保 100% 触发全额伤害和横扫之刃
-            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
-
-            // 4. 执行原生 doAttack (触发 MCCMod 中的 AttackEntityCallback 事件，实现无敌帧清除)
+            // 4. 操作后再次锁定蓄力，防止下一 tick 判断失效
             try {
-                MappingHelper.invokeMethod(client, "doAttack");
-            } catch (Exception e) {
+                MappingHelper.setFieldValue(player, "field_6010", 100);
+                MappingHelper.setFieldValue(player, "lastAttackedTicks", 100);
+            } catch (Exception ignored) {}
+
+            // 5. 强制视觉反馈
+            if (mainHand != null) {
                 try {
-                    for (java.lang.reflect.Method m : client.getClass().getDeclaredMethods()) {
-                        if (m.getParameterCount() == 0 && (m.getName().startsWith("method_15") || m.getName().equals("doAttack"))) {
-                            m.setAccessible(true); m.invoke(client); break;
-                        }
-                    }
+                    try { MappingHelper.setFieldValue(player, "handSwinging", false); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(player, "handSwingTicks", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(player, "field_6277", false); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(player, "field_6259", 0); } catch (Exception ignored) {}
+                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
                 } catch (Exception ignored) {}
             }
 
-            // 4. 再次补回蓄力 (doAttack 内部会重置它，此处锁定以支持超高频)
-            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
-
-            // 5. 强制视觉反馈：重置挥手动画以支持高频
-            if (mainHand != null) {
-                try {
-                    boolean isSwinging = false;
-                    try { isSwinging = (boolean) MappingHelper.getFieldValue(player, "handSwinging", null); } catch (Exception ignored) {}
-
-                    if (isSwinging) {
-                        try { MappingHelper.setFieldValue(player, "handSwinging", false); } catch (Exception ignored) {}
-                        try { MappingHelper.setFieldValue(player, "field_6277", false); } catch (Exception ignored) {}
-                        try { MappingHelper.setFieldValue(player, "handSwingTicks", 0); } catch (Exception ignored) {}
-                        try { MappingHelper.setFieldValue(player, "field_6259", 0); } catch (Exception ignored) {}
-                    }
-
-                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
-                } catch (Exception e) {
-                    // 暴力查找 swingHand (Hand)
-                    try {
-                        java.lang.reflect.Method m = MappingHelper.findMethodByStructure(player.getClass(), null, mainHand.getClass());
-                        if (m != null) { m.setAccessible(true); m.invoke(player, mainHand); }
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            // 攻击后再次确保冷却重置，防止原生逻辑在 doAttack 结尾重新设置冷却
+            // 攻击后再次确保冷却重置
             resetAttackCooldown(client);
 
         } catch (Exception ignored) {}
@@ -338,10 +335,8 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
-            // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
             MappingHelper.invokeMethod(client, "doItemUse");
 
-            // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
             if (target == null) {
@@ -361,14 +356,12 @@ public class AutomationManager {
                     try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
                         if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
                     }
-                    if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
+                    if (accepted) MappingHelper.invokeMethod(client, "doItemUse");
                 }
             }
 
-            // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
             MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
 
-            // 4. 强制触发挥手
             boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
             if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
@@ -377,13 +370,11 @@ public class AutomationManager {
 
     private static void resetAttackCooldown(Object client) {
         try {
-            // MinecraftClient.attackCooldown: field_1752 (1.21.1), field_1755 (1.21.4)
             String[] fields = {"field_1752", "field1752", "field_1755", "field1755", "attackCooldown"};
             for (String f : fields) {
                 try { MappingHelper.setFieldValue(client, f, 0); } catch (Exception ignored) {}
             }
 
-            // 扫描任何看起来像冷却的 int 字段
             try {
                 for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
                     if (f.getType() == int.class && (f.getName().contains("Cooldown") || f.getName().contains("field_175"))) {
@@ -395,12 +386,9 @@ public class AutomationManager {
 
             Object player = CommandDispatcher.getClientPlayer();
             if (player != null) {
-                // 强制设为蓄力满状态: field_6010 (lastAttackedTicks)
-                // 注意：不能调用 resetLastAttackedTicks()，因为那会把蓄力清零
                 try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
                 try { MappingHelper.setFieldValue(player, "lastAttackedTicks", 100); } catch (Exception ignored) {}
 
-                // 停止使用物品（如果正在使用），防止阻塞攻击
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
                 if (isUsing) {
@@ -411,7 +399,6 @@ public class AutomationManager {
                     }
                 }
 
-                // 暴力重置目标无敌时间
                 Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
                 if (target != null) {
                     Class<?> entityHitResultClass = null;
@@ -419,8 +406,8 @@ public class AutomationManager {
                     if (entityHitResultClass != null && entityHitResultClass.isInstance(target)) {
                         Object entity = MappingHelper.invokeMethod(target, "getEntity");
                         if (entity != null) {
-                            try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {} // hurtResistantTime
-                            try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {} // hurtTime
+                            try { MappingHelper.setFieldValue(entity, "field_6008", 0); } catch (Exception ignored) {}
+                            try { MappingHelper.setFieldValue(entity, "field_6007", 0); } catch (Exception ignored) {}
                             try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Exception ignored) {}
                             try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Exception ignored) {}
                         }
@@ -428,18 +415,17 @@ public class AutomationManager {
                 }
             }
 
-            // 设置 ClientPlayerInteractionManager.blockBreakingCooldown 为 0
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             if (im != null) {
                 try { MappingHelper.setFieldValue(im, "field_1613", 0); } catch (Exception ignored) {}
                 try { MappingHelper.setFieldValue(im, "blockBreakingCooldown", 0); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(im, "field_1612", 0); } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
     }
 
     private static void resetUseCooldown(Object client) {
         try {
-            // itemUseCooldown: field_1753 (1.21.1), field_1752 (1.21.4)
             String[] fields = {"field_1753", "field1753", "field_1752", "field1752", "itemUseCooldown"};
             for (String f : fields) {
                 try { MappingHelper.setFieldValue(client, f, 0); } catch (Exception ignored) {}
