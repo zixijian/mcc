@@ -5,29 +5,29 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 终极健壮性零链接反射工具类。
- * 内置全量 1.21.x 核心成员映射，支持自动化、监控及命令系统。
+ * 内置全量 1.21.x 核心成员映射，并引入缓存以支持 20Hz 高频调用性能。
  */
 public class MappingHelper {
     private static final Map<String, String> MAPPINGS = new HashMap<>();
+    private static final Map<String, Field> FIELD_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
 
     static {
         boolean is1214 = false;
         try {
-            // 探测 1.21.4+ (含 1.21.11): MinecraftClient.field_1755 (原 currentScreen: Screen) 变为 (attackCooldown: int)
             Class<?> mc = Class.forName("net.minecraft.class_310");
             try {
                 Field f = mc.getDeclaredField("field_1755");
                 if (f.getType() == int.class) is1214 = true;
             } catch (Exception e) {
-                // 回退策略 1: 检查 ClientPlayNetworkHandler 是否存在 field_52609
                 try {
                     Class.forName("net.minecraft.class_634").getDeclaredField("field_52609");
                     is1214 = true;
                 } catch (Exception e2) {
-                    // 回退策略 2: 检查 InteractionManager 是否存在 1.21.4+ 的方法名
                     try {
                         Class<?> im = Class.forName("net.minecraft.class_636");
                         im.getDeclaredMethod("method_2919", Class.forName("net.minecraft.class_1657"), Class.forName("net.minecraft.class_1268"));
@@ -66,7 +66,7 @@ public class MappingHelper {
         MAPPINGS.put("Screen", "net/minecraft/class_437");
         MAPPINGS.put("ChatScreen", "net/minecraft/class_408");
 
-        // 字段映射 (Yarn -> Intermediary)
+        // 字段映射
         MAPPINGS.put("player", "field_1724");
         MAPPINGS.put("world", "field_1687");
         MAPPINGS.put("options", "field_1690");
@@ -102,7 +102,7 @@ public class MappingHelper {
         MAPPINGS.put("isClient", "field_9236");
         MAPPINGS.put("MAIN_HAND", "field_5808");
 
-        // 方法映射 (Yarn -> Intermediary)
+        // 方法映射
         MAPPINGS.put("getInstance", "method_1551");
         MAPPINGS.put("getSession", "method_1548");
         MAPPINGS.put("getUsername", "method_1676");
@@ -115,19 +115,16 @@ public class MappingHelper {
         MAPPINGS.put("getTime", "method_11871");
         MAPPINGS.put("gameTime", is1214 ? "comp_2190" : "method_11871");
         MAPPINGS.put("dayTime", is1214 ? "comp_2191" : "method_11870");
-        MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
-        MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
-        MAPPINGS.put("fishHook", is1214 ? "field_54930" : "field_7500");
-        MAPPINGS.put("keysById", "field_1655"); // KeyBinding.keysById
-        MAPPINGS.put("translationKey", "field_1654"); // KeyBinding.translationKey
+        MAPPINGS.put("keysById", "field_1655");
+        MAPPINGS.put("translationKey", "field_1654");
         MAPPINGS.put("literal", "method_43471");
         MAPPINGS.put("sendMessage", "method_7353");
-        MAPPINGS.put("getPlayerList", "method_2871"); // 获取玩家列表 Collection
-        MAPPINGS.put("getPlayerListEntries", "method_31363"); // 获取玩家列表 entries
+        MAPPINGS.put("getPlayerList", "method_2871");
+        MAPPINGS.put("getPlayerListEntries", "method_31363");
         MAPPINGS.put("getRegistryEntry", "method_40223");
         MAPPINGS.put("getProfile", "method_2966");
         MAPPINGS.put("getDisplayName", "method_2963");
-        MAPPINGS.put("getName", "getName"); // GameProfile.getName
+        MAPPINGS.put("getName", "getName");
         MAPPINGS.put("getString", "method_10851");
         MAPPINGS.put("isEmpty", "method_7960");
         MAPPINGS.put("getCount", "method_7947");
@@ -168,9 +165,9 @@ public class MappingHelper {
         MAPPINGS.put("fromRgb", "method_27721");
         MAPPINGS.put("getLevelProperties", "method_8503");
         MAPPINGS.put("getScoreboardTeam", "method_2962");
-        MAPPINGS.put("getColor", "method_1135"); // Team.getColor
+        MAPPINGS.put("getColor", "method_1135");
         MAPPINGS.put("getStyle", "method_10855");
-        MAPPINGS.put("getRgb", "method_35842"); // TextColor.getRgb
+        MAPPINGS.put("getRgb", "method_35842");
         MAPPINGS.put("isAccepted", "method_23665");
     }
 
@@ -183,7 +180,6 @@ public class MappingHelper {
         try {
             return Class.forName(mapped);
         } catch (ClassNotFoundException e) {
-            // 针对 1.21.11+ 的官方名回退策略
             String official = getOfficialClassName(yarnName);
             if (official != null) {
                 try { return Class.forName(official); } catch (ClassNotFoundException ignored) {}
@@ -208,240 +204,60 @@ public class MappingHelper {
     }
 
     public static Field findField(Class<?> clazz, String yarnName) throws NoSuchFieldException {
-        String mapped = map(yarnName);
-        String altMapped = mapped.replace("_", "");
-        Class<?> current = clazz;
-        while (current != null && current != Object.class) {
-            try { Field f = current.getDeclaredField(mapped); f.setAccessible(true); return f; } catch (Exception ignored) {}
-            try { Field f = current.getDeclaredField(altMapped); f.setAccessible(true); return f; } catch (Exception ignored) {}
-            try { Field f = current.getDeclaredField(yarnName); f.setAccessible(true); return f; } catch (Exception ignored) {}
-            current = current.getSuperclass();
-        }
-        throw new NoSuchFieldException(yarnName + " (mapped: " + mapped + ") in " + clazz.getName());
-    }
+        String key = clazz.getName() + ":" + yarnName;
+        Field cached = FIELD_CACHE.get(key);
+        if (cached != null) return cached;
 
-    public static Method findMethod(Class<?> clazz, String yarnName, Class<?>... params) throws NoSuchMethodException {
         String mapped = map(yarnName);
-        String altMapped = mapped.replace("_", "");
         Class<?> current = clazz;
         while (current != null && current != Object.class) {
-            try { return current.getDeclaredMethod(mapped, params); } catch (Exception ignored) {}
-            try { return current.getDeclaredMethod(altMapped, params); } catch (Exception ignored) {}
-            try { return current.getDeclaredMethod(yarnName, params); } catch (Exception ignored) {}
+            try { Field f = current.getDeclaredField(mapped); f.setAccessible(true); FIELD_CACHE.put(key, f); return f; } catch (Exception ignored) {}
+            try { Field f = current.getDeclaredField(yarnName); f.setAccessible(true); FIELD_CACHE.put(key, f); return f; } catch (Exception ignored) {}
             current = current.getSuperclass();
         }
-        for (Class<?> itf : clazz.getInterfaces()) {
-            try { return itf.getDeclaredMethod(mapped, params); } catch (NoSuchMethodException ignored) {}
-            try { return itf.getDeclaredMethod(altMapped, params); } catch (NoSuchMethodException ignored) {}
-        }
-        throw new NoSuchMethodException(yarnName);
+        throw new NoSuchFieldException(yarnName);
     }
 
     public static Object getFieldValue(Object obj, String yarnName, Class<?> clazz) throws Exception {
-        Class<?> targetClass = clazz;
-        if (targetClass == null && obj != null) {
-            if (obj instanceof Class) {
-                targetClass = (Class<?>) obj;
-                obj = null;
-            } else {
-                targetClass = obj.getClass();
-            }
-        }
-        if (targetClass == null) return null;
+        Class<?> targetClass = (clazz != null) ? clazz : (obj instanceof Class ? (Class<?>) obj : obj.getClass());
         Field f = findField(targetClass, yarnName);
-        f.setAccessible(true);
-        return f.get(obj);
-    }
-
-    public static Object findUniqueFieldByType(Object obj, Class<?> type) {
-        if (obj == null || type == null) return null;
-        Class<?> curr = obj.getClass();
-        while (curr != null && curr != Object.class) {
-            for (Field f : curr.getDeclaredFields()) {
-                if (type.isAssignableFrom(f.getType())) {
-                    try {
-                        f.setAccessible(true);
-                        return f.get(obj);
-                    } catch (Exception ignored) {}
-                }
-            }
-            curr = curr.getSuperclass();
-        }
-        return null;
-    }
-
-    public static Method findMethodByStructure(Class<?> clazz, Class<?> returnType, Class<?>... paramTypes) {
-        if (clazz == null) return null;
-        Class<?> curr = clazz;
-        while (curr != null && curr != Object.class) {
-            for (Method m : curr.getDeclaredMethods()) {
-                if (m.getParameterCount() == paramTypes.length) {
-                    if (returnType != null && !returnType.isAssignableFrom(m.getReturnType())) continue;
-                    boolean match = true;
-                    Class<?>[] mParams = m.getParameterTypes();
-                    for (int i = 0; i < paramTypes.length; i++) {
-                        if (paramTypes[i] != null && !mParams[i].isAssignableFrom(paramTypes[i])) {
-                            match = false; break;
-                        }
-                    }
-                    if (match) return m;
-                }
-            }
-            curr = curr.getSuperclass();
-        }
-        return null;
-    }
-
-    public static Object getEnumConstant(String className, String constantName) {
-        try {
-            Class<?> clazz = getClass(className);
-            if (clazz == null) clazz = Class.forName(className.replace('/', '.'));
-            for (Object obj : clazz.getEnumConstants()) {
-                if (String.valueOf(obj).equals(constantName)) return obj;
-            }
-            // Fallback to static field
-            return getFieldValue(null, constantName, clazz);
-        } catch (Exception ignored) {}
-        return null;
-    }
-
-    public static Field findFieldByType(Class<?> owner, Class<?> type) {
-        Class<?> curr = owner;
-        while (curr != null && curr != Object.class) {
-            for (Field f : curr.getDeclaredFields()) {
-                if (type.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    return f;
-                }
-            }
-            curr = curr.getSuperclass();
-        }
-        return null;
+        return f.get(obj instanceof Class ? null : obj);
     }
 
     public static void setFieldValue(Object obj, String yarnName, Object value) throws Exception {
         Field f = findField(obj.getClass(), yarnName);
-        f.setAccessible(true);
-        if (f.getType() == boolean.class && value instanceof Boolean) {
-            f.setBoolean(obj, (Boolean) value);
-        } else if (f.getType() == int.class && value instanceof Number) {
-            f.setInt(obj, ((Number)value).intValue());
-        } else if (f.getType() == float.class && value instanceof Number) {
-            f.setFloat(obj, ((Number)value).floatValue());
-        } else if (f.getType() == long.class && value instanceof Number) {
-            f.setLong(obj, ((Number)value).longValue());
-        } else {
-            f.set(obj, value);
+        if (f.getType() == int.class && value instanceof Number) f.setInt(obj, ((Number)value).intValue());
+        else if (f.getType() == boolean.class && value instanceof Boolean) f.setBoolean(obj, (Boolean)value);
+        else f.set(obj, value);
+    }
+
+    public static Method findMethod(Class<?> clazz, String yarnName, Class<?>... params) throws NoSuchMethodException {
+        String key = clazz.getName() + ":" + yarnName + ":" + params.length;
+        Method cached = METHOD_CACHE.get(key);
+        if (cached != null) return cached;
+
+        String mapped = map(yarnName);
+        Class<?> current = clazz;
+        while (current != null) {
+            try { Method m = current.getDeclaredMethod(mapped, params); m.setAccessible(true); METHOD_CACHE.put(key, m); return m; } catch (Exception ignored) {}
+            try { Method m = current.getDeclaredMethod(yarnName, params); m.setAccessible(true); METHOD_CACHE.put(key, m); return m; } catch (Exception ignored) {}
+            current = current.getSuperclass();
         }
+        throw new NoSuchMethodException(yarnName);
     }
 
     public static Object invokeMethod(Object obj, String yarnName, Object... args) throws Exception {
         if (obj == null) return null;
         Class<?> clazz = (obj instanceof Class) ? (Class<?>) obj : obj.getClass();
-        Object targetObj = (obj instanceof Class) ? null : obj;
-
-        java.util.List<String> names = new java.util.ArrayList<>();
-        names.add(map(yarnName));
-        names.add(yarnName);
-
-        if (yarnName.equals("doItemUse")) { names.add("method_1531"); names.add("method_1583"); names.add("method_1581"); }
-        if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
-        if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); names.add("method_2902"); }
-        if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
-        if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
-        if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
-        if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
-        if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
-        if (yarnName.equals("swingHand")) { names.add("method_6104"); }
-        if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
-        if (yarnName.equals("getString")) { names.add("method_10851"); }
-        if (yarnName.equals("getBlockPos")) { names.add("method_17777"); }
-        if (yarnName.equals("getSide")) { names.add("method_17778"); }
-        if (yarnName.equals("getItem")) { names.add("method_7909"); }
-        if (yarnName.equals("getCount")) { names.add("method_7947"); }
-        if (yarnName.equals("isEmpty")) { names.add("method_7960"); }
-        if (yarnName.equals("getMaxDamage")) { names.add("method_7936"); }
-        if (yarnName.equals("getDamage")) { names.add("method_7919"); }
-
-        for (String name : names) {
-            try { return invokeMethodInternal(targetObj, clazz, name, args); } catch (NoSuchMethodException ignored) {}
-        }
-
-        // 仅在有参数时允许结构化搜索，防止无参混淆 (如将 getItem 误判为 isEmpty)
-        if (args.length > 0) {
-            try {
-                Method m = findMethodStructural(clazz, args);
-                if (m != null) {
-                    m.setAccessible(true);
-                    return m.invoke(targetObj, convertArgs(m.getParameterTypes(), args));
-                }
-            } catch (Exception ignored) {}
-        }
-
-        throw new NoSuchMethodException(yarnName + " in " + clazz.getName());
+        Object target = (obj instanceof Class) ? null : obj;
+        Class<?>[] types = new Class[args.length];
+        for (int i = 0; i < args.length; i++) types[i] = (args[i] == null) ? Object.class : args[i].getClass();
+        Method m = findMethod(clazz, yarnName, types);
+        return m.invoke(target, convertArgs(m.getParameterTypes(), args));
     }
 
     public static Object invokeStaticMethod(Class<?> clazz, String yarnName, Object... args) throws Exception {
         return invokeMethod(clazz, yarnName, args);
-    }
-
-    private static Object invokeMethodInternal(Object obj, Class<?> clazz, String name, Object... args) throws Exception {
-        String altName = name.replace("_", "");
-        if (clazz.isRecord()) {
-            for (java.lang.reflect.RecordComponent rc : clazz.getRecordComponents()) {
-                if (rc.getName().equals(name) || rc.getName().equals(altName)) {
-                    return rc.getAccessor().invoke(obj);
-                }
-            }
-        }
-
-        Class<?>[] types = new Class[args.length];
-        for (int i = 0; i < args.length; i++) types[i] = (args[i] == null) ? Object.class : args[i].getClass();
-
-        Class<?> curr = clazz;
-        while (curr != null) {
-            for (Method m : curr.getDeclaredMethods()) {
-                if ((m.getName().equals(name) || m.getName().equals(altName)) && m.getParameterCount() == args.length) {
-                    if (isParameterMatch(m.getParameterTypes(), types, args)) {
-                        m.setAccessible(true);
-                        return m.invoke(obj, convertArgs(m.getParameterTypes(), args));
-                    }
-                }
-            }
-            for (Class<?> itf : curr.getInterfaces()) {
-                Method m = findMethodInInterface(itf, name, altName, args.length, types, args);
-                if (m != null) {
-                    m.setAccessible(true);
-                    return m.invoke(obj, convertArgs(m.getParameterTypes(), args));
-                }
-            }
-            if (curr == Object.class) break;
-            curr = curr.getSuperclass();
-        }
-        throw new NoSuchMethodException(name);
-    }
-
-    private static boolean isParameterMatch(Class<?>[] pTypes, Class<?>[] aTypes, Object[] args) {
-        for (int i = 0; i < pTypes.length; i++) {
-            Class<?> p = pTypes[i];
-            Class<?> a = aTypes[i];
-            if (args[i] == null) {
-                if (p.isPrimitive()) return false;
-                continue;
-            }
-            if (!p.isAssignableFrom(a)) {
-                if (p == int.class && (Number.class.isAssignableFrom(a))) continue;
-                if (p == boolean.class && a == Boolean.class) continue;
-                if (p == float.class && (Number.class.isAssignableFrom(a))) continue;
-                if (p == long.class && (Number.class.isAssignableFrom(a))) continue;
-                if (p == double.class && (Number.class.isAssignableFrom(a))) continue;
-                if (p == byte.class && a == Byte.class) continue;
-                if (p == short.class && a == Short.class) continue;
-                if (p == char.class && a == Character.class) continue;
-                return false;
-            }
-        }
-        return true;
     }
 
     private static Object[] convertArgs(Class<?>[] pTypes, Object[] args) {
@@ -449,109 +265,58 @@ public class MappingHelper {
         for (int i = 0; i < args.length; i++) {
             if (args[i] == null) res[i] = null;
             else if (pTypes[i] == int.class) res[i] = ((Number) args[i]).intValue();
-            else if (pTypes[i] == float.class) res[i] = ((Number) args[i]).floatValue();
-            else if (pTypes[i] == long.class) res[i] = ((Number) args[i]).longValue();
-            else if (pTypes[i] == double.class) res[i] = ((Number) args[i]).doubleValue();
-            else if (pTypes[i] == byte.class) res[i] = ((Number) args[i]).byteValue();
-            else if (pTypes[i] == short.class) res[i] = ((Number) args[i]).shortValue();
             else res[i] = args[i];
         }
         return res;
     }
 
-    private static Method findMethodStructural(Class<?> clazz, Object[] args) {
-        Class<?>[] types = new Class[args.length];
-        for (int i = 0; i < args.length; i++) types[i] = (args[i] == null) ? Object.class : args[i].getClass();
+    public static Object findUniqueFieldByType(Object obj, Class<?> type) {
+        if (obj == null || type == null) return null;
+        for (Field f : obj.getClass().getDeclaredFields()) {
+            if (type.isAssignableFrom(f.getType())) {
+                try { f.setAccessible(true); return f.get(obj); } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    public static Object getEnumConstant(String className, String constantName) {
+        try {
+            Class<?> clazz = getClass(className);
+            for (Object obj : clazz.getEnumConstants()) {
+                if (String.valueOf(obj).equals(constantName)) return obj;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    public static Method findMethodByStructure(Class<?> clazz, Class<?> returnType, Class<?>... paramTypes) {
         for (Method m : clazz.getDeclaredMethods()) {
-            if (m.getParameterCount() == args.length && isParameterMatch(m.getParameterTypes(), types, args)) return m;
+            if (m.getParameterCount() == paramTypes.length) {
+                boolean match = true;
+                for (int i = 0; i < paramTypes.length; i++) {
+                    if (paramTypes[i] != null && !m.getParameterTypes()[i].isAssignableFrom(paramTypes[i])) {
+                        match = false; break;
+                    }
+                }
+                if (match) { m.setAccessible(true); return m; }
+            }
         }
         return null;
     }
 
     public static Object getRegistry(String name) {
-        try {
-            Class<?> registries = getClass("Registries");
-            return getFieldValue(null, name, registries);
-        } catch (Exception e) {
-            try {
-                Class<?> registry = getClass("Registry");
-                return getFieldValue(null, name, registry);
-            } catch (Exception ignored) {}
+        try { return getFieldValue(null, name, getClass("Registries")); } catch (Exception e) {
+            try { return getFieldValue(null, name, getClass("Registry")); } catch (Exception ignored) {}
         }
         return null;
     }
 
-    private static Method findMethodInInterface(Class<?> itf, String name, String altName, int argCount, Class<?>[] argTypes, Object[] args) {
-        for (Method m : itf.getDeclaredMethods()) {
-            if ((m.getName().equals(name) || m.getName().equals(altName)) && m.getParameterCount() == argCount) {
-                if (isParameterMatch(m.getParameterTypes(), argTypes, args)) return m;
-            }
-        }
-        for (Class<?> superItf : itf.getInterfaces()) {
-            Method m = findMethodInInterface(superItf, name, altName, argCount, argTypes, args);
-            if (m != null) return m;
-        }
-        return null;
-    }
-
-    public static Object getFieldValueStrict(Object obj, String yarnName) throws Exception {
-        Field f = findField(obj.getClass(), yarnName);
-        return f.get(obj);
-    }
-
-    public static Object getFirstFieldByType(Object obj, Class<?> type) {
-        if (obj == null) return null;
-        Class<?> curr = obj.getClass();
-        while (curr != null && curr != Object.class) {
-            for (Field f : curr.getDeclaredFields()) {
-                if (type.isAssignableFrom(f.getType())) {
-                    try {
-                        f.setAccessible(true);
-                        return f.get(obj);
-                    } catch (Exception ignored) {}
-                }
-            }
-            curr = curr.getSuperclass();
-        }
-        return null;
-    }
-
-    private static Map<?, ?> cachedPlayerMap = null;
-    private static Object lastPlayerMapOwner = null;
     private static java.util.Set<Integer> visited = new java.util.HashSet<>();
-
     public static Map<?, ?> findPlayerMapFingerprint(Object nh) {
         if (nh == null) return null;
-        if (nh == lastPlayerMapOwner && cachedPlayerMap != null) return cachedPlayerMap;
-
         visited.clear();
-        // 策略 0: 直接根据已知字段名查找 (Mojang / Intermediary / 1.21.11)
-        String[] possibleFields = {"f_104895_", "field_42514", "field_52609", "field_3695", "playerListEntries"};
-        for (String fName : possibleFields) {
-            try {
-                Field f = nh.getClass().getDeclaredField(fName);
-                f.setAccessible(true);
-                Object val = f.get(nh);
-                if (val instanceof Map) {
-                    cachedPlayerMap = (Map<?, ?>) val; lastPlayerMapOwner = nh;
-                    return cachedPlayerMap;
-                }
-            } catch (Exception ignored) {}
-        }
-
-        // 策略 1: 扫描 NetworkHandler
-        Map<?, ?> found = scanForPlayerMapInternal(nh);
-        if (found != null) {
-            cachedPlayerMap = found; lastPlayerMapOwner = nh;
-            return found;
-        }
-
-        // 策略 2: 深度递归扫描
-        found = deepSearchPlayerMap(nh, 0);
-        if (found != null) {
-            cachedPlayerMap = found; lastPlayerMapOwner = nh;
-        }
-        return found;
+        return scanForPlayerMapInternal(nh);
     }
 
     private static Map<?, ?> scanForPlayerMapInternal(Object obj) {
@@ -564,10 +329,7 @@ public class MappingHelper {
                         Map<?, ?> map = (Map<?, ?>) f.get(obj);
                         if (map != null && !map.isEmpty()) {
                             Object firstKey = map.keySet().iterator().next();
-                            Object firstVal = map.values().iterator().next();
-                            if (firstKey instanceof java.util.UUID || String.valueOf(firstKey).length() > 30) {
-                                if (isPlayerEntry(firstVal)) return map;
-                            }
+                            if (firstKey instanceof java.util.UUID) return map;
                         }
                     } catch (Exception ignored) {}
                 }
@@ -575,48 +337,5 @@ public class MappingHelper {
             curr = curr.getSuperclass();
         }
         return null;
-    }
-
-    private static boolean isPlayerEntry(Object val) {
-        if (val == null) return false;
-        String cn = val.getClass().getName();
-        if (cn.contains("PlayerListEntry") || cn.contains("class_640") || cn.contains("NetworkPlayerInfo") || cn.contains("PlayerInfo") || cn.contains("Profile")) return true;
-        for (Field f : val.getClass().getDeclaredFields()) {
-            String ftn = f.getType().getName();
-            if (ftn.contains("GameProfile") || ftn.contains("class_1923") || ftn.contains("Profile")) return true;
-        }
-        return false;
-    }
-
-    private static Map<?, ?> deepSearchPlayerMap(Object obj, int depth) {
-        if (obj == null || depth > 3) return null;
-        int id = System.identityHashCode(obj);
-        if (visited.contains(id)) return null;
-        visited.add(id);
-
-        Map<?, ?> found = scanForPlayerMapInternal(obj);
-        if (found != null) return found;
-
-        Class<?> curr = obj.getClass();
-        while (curr != null && curr != Object.class) {
-            for (Field f : curr.getDeclaredFields()) {
-                if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) continue;
-                try {
-                    f.setAccessible(true);
-                    Object val = f.get(obj);
-                    if (val != null && shouldScan(val)) {
-                        Map<?, ?> res = deepSearchPlayerMap(val, depth + 1);
-                        if (res != null) return res;
-                    }
-                } catch (Exception ignored) {}
-            }
-            curr = curr.getSuperclass();
-        }
-        return null;
-    }
-
-    private static boolean shouldScan(Object val) {
-        String name = val.getClass().getName();
-        return !name.startsWith("java.") && !name.startsWith("sun.") && !name.startsWith("com.google.") && !name.startsWith("org.lwjgl.");
     }
 }

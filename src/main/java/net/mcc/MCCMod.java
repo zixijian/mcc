@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 核心入口类。
- * 采用反射驱动型架构，确保 1.21.x 全版本兼容性并防止类加载崩溃。
+ * 采用反射驱动型架构，确保 1.21.x 全版本兼容。
  */
 public class MCCMod implements ClientModInitializer, ModInitializer {
     public static final String MOD_ID = "mcc";
@@ -20,7 +20,7 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("MCC Mod Common Initialized (Universal Reflective Mode)");
+        LOGGER.info("MCC Mod Common Initialized (Reflective Mode)");
         try {
             registerAttackEvents();
         } catch (Throwable e) {
@@ -29,24 +29,23 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
     }
 
     private void registerAttackEvents() throws Exception {
-        // 动态定位 Fabric API 事件类
         Class<?> attackEntityCallback = Class.forName("net.fabricmc.fabric.api.event.player.AttackEntityCallback");
         Class<?> attackBlockCallback = Class.forName("net.fabricmc.fabric.api.event.player.AttackBlockCallback");
 
-        // 1. 注册 AttackEntityCallback (处理蓄力锁定与无敌帧)
+        // 1. 注册 AttackEntityCallback
         registerFabricEvent(attackEntityCallback, (proxy, method, args) -> {
             if (method.getName().equals("interact")) {
                 Object player = args[0];
                 Object world = args[1];
                 Object entity = args[3];
                 if (player != null) {
-                    // 攻击判定瞬间：锁定满蓄力 (100)
+                    // 攻击判定瞬间：锁定满蓄力 (field_6010 = 100)
                     try {
                         MappingHelper.setFieldValue(player, "field_6010", 100);
                         MappingHelper.setFieldValue(player, "lastAttackedTicks", 100);
                     } catch (Throwable ignored) {}
 
-                    // 目标处理：清除无敌帧实现高频伤害
+                    // 目标处理：清除无敌帧与受击计时器，确保 20Hz 伤害
                     if (entity != null) {
                         try {
                             boolean isClient = true;
@@ -58,7 +57,7 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
                             }
 
                             if (!isClient) {
-                                // 服务端：在服务器线程末尾清除，确保当前 tick 的伤害判定已正常结束
+                                // 服务端：在 tick 结束后清除，保证当前攻击伤害正常结算
                                 Object server = MappingHelper.invokeMethod(world, "getServer");
                                 if (server != null) {
                                     final Object targetEntity = entity;
@@ -66,7 +65,7 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
                                     execute.invoke(server, (Runnable) () -> forceClearInvulnerability(targetEntity));
                                 }
                             } else {
-                                // 客户端：立即清除以支持预测逻辑
+                                // 客户端：立即清除支持预测
                                 forceClearInvulnerability(entity);
                             }
                         } catch (Throwable ignored) {}
@@ -76,7 +75,7 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
             return ActionResultStatic.PASS();
         });
 
-        // 2. 注册 AttackBlockCallback (针对方块标记，同样锁定蓄力)
+        // 2. 注册 AttackBlockCallback
         registerFabricEvent(attackBlockCallback, (proxy, method, args) -> {
             if (method.getName().equals("interact")) {
                 Object player = args[0];
@@ -94,20 +93,17 @@ public class MCCMod implements ClientModInitializer, ModInitializer {
     private void registerFabricEvent(Class<?> eventClass, java.lang.reflect.InvocationHandler handler) throws Exception {
         java.lang.reflect.Field eventField = eventClass.getField("EVENT");
         Object eventInstance = eventField.get(null);
-        // 使用动态代理，直接使用 Callback 接口类作为代理接口
         Object proxy = java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{eventClass}, handler);
         eventInstance.getClass().getMethod("register", eventClass).invoke(eventInstance, proxy);
     }
 
-    /**
-     * 彻底清除实体的受击计时器，确保高频有效
-     */
     private static void forceClearInvulnerability(Object entity) {
         try {
+            // 彻底清除所有受击计时器
             MappingHelper.setFieldValue(entity, "field_6008", 0); // hurtResistantTime
-            MappingHelper.setFieldValue(entity, "hurtResistantTime", 0);
             MappingHelper.setFieldValue(entity, "field_6007", 0); // hurtTime
-            MappingHelper.setFieldValue(entity, "hurtTime", 0);
+            try { MappingHelper.setFieldValue(entity, "hurtResistantTime", 0); } catch (Throwable ignored) {}
+            try { MappingHelper.setFieldValue(entity, "hurtTime", 0); } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
     }
 
