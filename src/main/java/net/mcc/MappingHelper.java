@@ -164,11 +164,15 @@ public class MappingHelper {
         MAPPINGS.put("getRgb", "method_35842"); // TextColor.getRgb
         MAPPINGS.put("isAccepted", "method_23665");
         MAPPINGS.put("getAttackCooldownProgressPerTick", "method_26352");
+        MAPPINGS.put("getAttackCooldownProgress", "method_7261");
         MAPPINGS.put("getBlockPos", "method_17777");
         MAPPINGS.put("getSide", "method_17778");
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
         MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
         MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
+        MAPPINGS.put("EntityAttributes", "net/minecraft/class_1320");
+        MAPPINGS.put("GENERIC_ATTACK_SPEED", is1214 ? "field_55212" : "field_6338");
+        MAPPINGS.put("getAttributeValue", "method_6125");
     }
 
     public static String map(String name) {
@@ -349,6 +353,8 @@ public class MappingHelper {
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
+        if (yarnName.equals("getAttackCooldownProgressPerTick")) { names.add("method_26352"); }
+        if (yarnName.equals("getAttackCooldownProgress")) { names.add("method_7261"); }
         if (yarnName.equals("swingHand")) { names.add("method_6104"); }
         if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
         if (yarnName.equals("getString")) { names.add("method_10851"); }

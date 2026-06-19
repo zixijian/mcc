@@ -21,6 +21,7 @@ public class AutomationManager {
         if (!hasArgs) {
             attackOnce = true;
             attackTimer = 0; // 重置计时器
+            internalAttackTicks = 100; // 让单次点击能立即进入延迟判定
             CommandDispatcher.addFeedback("§a执行攻击一次");
             return;
         }
@@ -206,44 +207,55 @@ public class AutomationManager {
             }
 
             // 2. 攻击逻辑
+            // 强制蓄力条始终显示为满值 (UI 表现)
+            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
+
             if (attackFreq >= 0 || attackOnce) {
                 internalAttackTicks++;
+
+                // 统一判定逻辑：无论单次还是持续攻击(atk 0)，都遵循 1.0f + 1 tick 延迟
+                if (attackOnce || attackFreq == 0) {
+                    float progress = 0f;
+                    try {
+                        // 尝试动态计算
+                        float attackSpeed = 4.0f;
+                        try {
+                            Object attr = MappingHelper.getFieldValue(null, "GENERIC_ATTACK_SPEED", MappingHelper.getClass("EntityAttributes"));
+                            attackSpeed = ((Number) MappingHelper.invokeMethod(player, "getAttributeValue", attr)).floatValue();
+                        } catch (Exception ignored) {}
+
+                        float cooldownTicks = 20.0f / attackSpeed;
+                        progress = internalAttackTicks / cooldownTicks;
+
+                        // 双重校验：尝试调用原生的 getAttackCooldownProgress (method_7261)
+                        try {
+                            float nativeProgress = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgress", 0.0f)).floatValue();
+                            if (nativeProgress > progress) progress = nativeProgress;
+                        } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        progress = internalAttackTicks * 0.1f;
+                    }
+
+                    if (waitTicksAfterHalfCharge == -1 && progress >= 1.0f) {
+                        waitTicksAfterHalfCharge = 1;
+                    }
+
+                    if (waitTicksAfterHalfCharge > 0) {
+                        waitTicksAfterHalfCharge--;
+                    } else if (waitTicksAfterHalfCharge == 0) {
+                        resetAttackCooldown(client);
+                        triggerAttack(client, player);
+                        internalAttackTicks = 0;
+                        waitTicksAfterHalfCharge = -1;
+                        attackOnce = false;
+                    }
+                }
             } else {
                 internalAttackTicks = 0;
                 waitTicksAfterHalfCharge = -1;
             }
 
-            // 强制蓄力条始终显示为满值 (置于逻辑后方，防止被 doAttack 瞬间重置导致的视觉闪烁)
-            try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
-
-            // 统一判定逻辑：无论单次还是持续攻击，都必须经过 1.0f + 1 tick 延迟以确保有效性
-            if (attackOnce || attackFreq == 0) {
-                // 智能高频攻击：1.0f 蓄力 + 1 tick 延迟
-                float progress = 1.0f;
-                try {
-                    // getAttackCooldownProgressPerTick: 1.21.x -> method_26352
-                    // 该方法返回每 tick 增加的蓄力进度 (例如攻速 4.0 时返回 0.2)
-                    float progressPerTick = ((Number) MappingHelper.invokeMethod(player, "getAttackCooldownProgressPerTick")).floatValue();
-                    if (progressPerTick > 0) progress = internalAttackTicks * progressPerTick;
-                } catch (Exception e) {
-                    // 降级方案：假设 10 ticks 达到 1.0f (常见攻速)
-                    progress = internalAttackTicks * 0.1f;
-                }
-
-                if (waitTicksAfterHalfCharge == -1 && progress >= 1.0f) {
-                    waitTicksAfterHalfCharge = 1;
-                }
-
-                if (waitTicksAfterHalfCharge > 0) {
-                    waitTicksAfterHalfCharge--;
-                } else if (waitTicksAfterHalfCharge == 0) {
-                    resetAttackCooldown(client);
-                    triggerAttack(client, player);
-                    internalAttackTicks = 0;
-                    waitTicksAfterHalfCharge = -1;
-                    attackOnce = false; // 执行完单次攻击后重置
-                }
-            } else if (attackFreq > 0) {
+            if (attackFreq > 0) {
                 if (--attackTimer <= 0) {
                     resetAttackCooldown(client);
                     triggerAttack(client, player);
