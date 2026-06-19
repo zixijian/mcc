@@ -164,6 +164,11 @@ public class MappingHelper {
         MAPPINGS.put("getRgb", "method_35842"); // TextColor.getRgb
         MAPPINGS.put("isAccepted", "method_23665");
         MAPPINGS.put("getAttackCooldownProgressPerTick", "method_26352");
+        MAPPINGS.put("getBlockPos", "method_17777");
+        MAPPINGS.put("getSide", "method_17778");
+        MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
+        MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
+        MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
     }
 
     public static String map(String name) {
@@ -336,13 +341,13 @@ public class MappingHelper {
         names.add(map(yarnName));
         names.add(yarnName);
 
-        if (yarnName.equals("doItemUse")) { names.add(is1214 ? "method_1583" : "method_1531"); }
-        if (yarnName.equals("interactItem")) { names.add(is1214 ? "method_2919" : "method_2896"); }
-        if (yarnName.equals("interactBlock")) { names.add(is1214 ? "method_2896" : "method_2905"); }
-        if (yarnName.equals("attackBlock")) { names.add(is1214 ? "method_2910" : "method_2902"); }
-        if (yarnName.equals("doAttack")) { names.add(is1214 ? "method_1587" : "method_1536"); }
-        if (yarnName.equals("attackEntity")) { names.add(is1214 ? "method_2912" : "method_2918"); }
-        if (yarnName.equals("isUsingItem")) { names.add(is1214 ? "method_5971" : "method_6115"); }
+        if (yarnName.equals("doItemUse")) { names.add("method_1531"); names.add("method_1583"); names.add("method_1581"); }
+        if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
+        if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); names.add("method_2902"); }
+        if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
+        if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
+        if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
+        if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
         if (yarnName.equals("swingHand")) { names.add("method_6104"); }
         if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
