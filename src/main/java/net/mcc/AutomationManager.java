@@ -206,7 +206,7 @@ public class AutomationManager {
             // 2. 攻击逻辑
             if (attackFreq >= 0 || attackOnce) {
                 // 固定永久蓄满力: field_6010 (lastAttackedTicks)
-                try { MappingHelper.setFieldValue(player, "field_6010", 200); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(player, "field_6010", 100); } catch (Exception ignored) {}
             }
 
             if (attackOnce) {
