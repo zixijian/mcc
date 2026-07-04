@@ -64,6 +64,13 @@ public class ClientPlayNetworkHandlerMixin {
 
             if (gameTime != -1 && dayTime != -2) {
                 PerformanceMonitor.onWorldTimeUpdate(gameTime, dayTime);
+            } else if (gameTime != -1 || dayTime != -2) {
+                // 容错：如果只拿到了一个，至少同步一个
+                long finalGame = gameTime != -1 ? gameTime : PerformanceMonitor.getLastGameTime();
+                long finalDay = dayTime != -2 ? dayTime : PerformanceMonitor.getLastDayTime();
+                if (finalGame != -1 && finalDay != -2) {
+                    PerformanceMonitor.onWorldTimeUpdate(finalGame, finalDay);
+                }
             }
         } catch (Exception e) {}
     }
