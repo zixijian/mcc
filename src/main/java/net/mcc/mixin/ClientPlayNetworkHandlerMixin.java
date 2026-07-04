@@ -19,7 +19,8 @@ public class ClientPlayNetworkHandlerMixin {
     private void onWorldTimeUpdate(@Coerce Object packet, CallbackInfo ci) {
         try {
             long gameTime = -1;
-            long dayTime = -1;
+            long dayTime = -2; // 使用 -2 作为未初始化的标志，因为 -1 在 dayTime 中有意义 (冻结时间)
+
             // 策略 1: 属性读取 (Record or Class)
             try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "gameTime")).longValue(); } catch (Exception ignored) {}
             try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "dayTime")).longValue(); } catch (Exception ignored) {}
@@ -27,24 +28,28 @@ public class ClientPlayNetworkHandlerMixin {
             if (gameTime == -1) {
                 try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "method_11871")).longValue(); } catch (Exception ignored) {}
             }
-            if (dayTime == -1) {
+            if (dayTime == -2) {
                 try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "method_11870")).longValue(); } catch (Exception ignored) {}
             }
 
-            // 策略 2: 暴力查找 long 字段 (WorldTimeUpdateS2CPacket 通常有两个 long 字段)
-            if (gameTime == -1 || dayTime == -1) {
-                int count = 0;
+            // 策略 2: 暴力查找 long 字段 (WorldTimeUpdateS2CPacket 通常有两个 long 字段: gameTime, dayTime)
+            if (gameTime == -1 || dayTime == -2) {
+                java.util.List<Long> longFields = new java.util.ArrayList<>();
                 for (java.lang.reflect.Field f : packet.getClass().getDeclaredFields()) {
                     if (f.getType() == long.class) {
                         f.setAccessible(true);
-                        long val = f.getLong(packet);
-                        if (count == 0) gameTime = val;
-                        else if (count == 1) dayTime = val;
-                        count++;
+                        longFields.add(f.getLong(packet));
                     }
                 }
+                if (longFields.size() >= 2) {
+                    if (gameTime == -1) gameTime = longFields.get(0);
+                    if (dayTime == -2) dayTime = longFields.get(1);
+                }
             }
-            if (gameTime != -1) PerformanceMonitor.onWorldTimeUpdate(gameTime, dayTime != -1 ? dayTime : gameTime);
+
+            if (gameTime != -1 && dayTime != -2) {
+                PerformanceMonitor.onWorldTimeUpdate(gameTime, dayTime);
+            }
         } catch (Exception e) {}
     }
 

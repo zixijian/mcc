@@ -22,6 +22,29 @@ public class PerformanceMonitor {
         return lastDayTime;
     }
 
+    /**
+     * 获取估算的游戏时间，支持分钟级平滑增加
+     */
+    public static synchronized long getEstimatedDayTime() {
+        if (lastDayTime == -1) return -1;
+
+        // 如果是负数，表示服务器冻结了时间循环
+        long absTime = Math.abs(lastDayTime);
+
+        long now = System.currentTimeMillis();
+        long deltaReal = now - lastRealTime;
+
+        // 只有当时间未被真正冻结时才增加 (Minecraft 中负数表示冻结)
+        // 如果 deltaReal 太大（超过30秒），可能是因为刚进入世界或网络卡顿，不进行插值
+        if (lastDayTime >= 0 && deltaReal > 0 && deltaReal < 30000) {
+            // 1 tick = 50ms
+            long extraTicks = deltaReal / 50;
+            return absTime + extraTicks;
+        }
+
+        return absTime;
+    }
+
     public static synchronized void onWorldTimeUpdate(long gameTime, long dayTime) {
         long now = System.currentTimeMillis();
         if (lastGameTime != -1) {

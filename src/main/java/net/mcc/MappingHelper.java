@@ -351,6 +351,9 @@ public class MappingHelper {
         if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
         if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
+        if (yarnName.equals("dayTime")) { names.add("method_11870"); names.add("comp_2191"); }
+        if (yarnName.equals("gameTime")) { names.add("method_11871"); names.add("comp_2190"); }
+        if (yarnName.equals("getTimeOfDay")) { names.add("method_8510"); }
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
         if (yarnName.equals("getAttackCooldownProgressPerTick")) { names.add("method_26352"); }
