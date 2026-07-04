@@ -35,12 +35,27 @@ public class ClientPlayNetworkHandlerMixin {
             // 策略 2: 暴力查找 long 字段 (WorldTimeUpdateS2CPacket 通常有两个 long 字段: gameTime, dayTime)
             if (gameTime == -1 || dayTime == -2) {
                 java.util.List<Long> longFields = new java.util.ArrayList<>();
-                for (java.lang.reflect.Field f : packet.getClass().getDeclaredFields()) {
-                    if (f.getType() == long.class) {
-                        f.setAccessible(true);
-                        longFields.add(f.getLong(packet));
+                // 如果是 Record 类型，优先遍历 RecordComponents (1.21.2+)
+                if (packet.getClass().isRecord()) {
+                    for (java.lang.reflect.RecordComponent rc : packet.getClass().getRecordComponents()) {
+                        if (rc.getType() == long.class) {
+                            try { longFields.add(((Number) rc.getAccessor().invoke(packet)).longValue()); } catch (Exception ignored) {}
+                        }
                     }
                 }
+
+                // 无论是否是 Record，都扫描字段作为兜底
+                if (longFields.size() < 2) {
+                    for (java.lang.reflect.Field f : packet.getClass().getDeclaredFields()) {
+                        if (f.getType() == long.class && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                            try {
+                                f.setAccessible(true);
+                                longFields.add(f.getLong(packet));
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+
                 if (longFields.size() >= 2) {
                     if (gameTime == -1) gameTime = longFields.get(0);
                     if (dayTime == -2) dayTime = longFields.get(1);

@@ -14,6 +14,9 @@ public class PerformanceMonitor {
     private static long lastDayTime = -1;
     private static long lastRealTime = -1;
 
+    // 记录上一次显示的估算时间，防止由于网络波动导致时间回跳
+    private static long lastEstimatedDayTime = -1;
+
     public static long getLastGameTime() {
         return lastGameTime;
     }
@@ -28,20 +31,40 @@ public class PerformanceMonitor {
     public static synchronized long getEstimatedDayTime() {
         if (lastDayTime == -1) return -1;
 
-        // 如果是负数，表示服务器冻结了时间循环
         long absTime = Math.abs(lastDayTime);
-
         long now = System.currentTimeMillis();
         long deltaReal = now - lastRealTime;
 
         // 只有当时间未被真正冻结时才增加 (Minecraft 中负数表示冻结)
-        // 如果 deltaReal 太大（超过30秒），可能是因为刚进入世界或网络卡顿，不进行插值
-        if (lastDayTime >= 0 && deltaReal > 0 && deltaReal < 30000) {
-            // 1 tick = 50ms
-            long extraTicks = deltaReal / 50;
-            return absTime + extraTicks;
+        // 如果 deltaReal 太大（超过 2 秒，通常 1 秒一包），说明网络卡顿或刚同步，优先相信服务器
+        if (lastDayTime >= 0 && deltaReal > 0 && deltaReal < 2000) {
+            // 估算当前 TPS
+            double currentTps = 20.0;
+            if (count >= 2) {
+                long totalReal = 0;
+                long totalTicks = 0;
+                for (int i = 0; i < count; i++) {
+                    totalReal += timeSamples[i];
+                    totalTicks += tickSamples[i];
+                }
+                if (totalReal > 0) {
+                    currentTps = Math.min(20.0, (totalTicks * 1000.0) / totalReal);
+                }
+            }
+
+            // 1 tick = 1000 / tps ms
+            long extraTicks = (long)(deltaReal * currentTps / 1000.0);
+            long estimated = absTime + extraTicks;
+
+            // 单调递增保证：防止估算值由于 TPS 波动在临界点跳回
+            if (estimated < lastEstimatedDayTime && Math.abs(estimated - lastEstimatedDayTime) < 40) {
+                return lastEstimatedDayTime;
+            }
+            lastEstimatedDayTime = estimated;
+            return estimated;
         }
 
+        lastEstimatedDayTime = absTime;
         return absTime;
     }
 
@@ -51,7 +74,8 @@ public class PerformanceMonitor {
             long deltaGame = gameTime - lastGameTime;
             long deltaReal = now - lastRealTime;
 
-            if (deltaGame > 0 && deltaReal > 0) {
+            // 增加噪声过滤：deltaGame 异常大（如跨天）时不计入 TPS 统计
+            if (deltaGame > 0 && deltaGame < 100 && deltaReal > 0) {
                 timeSamples[head] = deltaReal;
                 tickSamples[head] = deltaGame;
                 head = (head + 1) % WINDOW_SIZE;
