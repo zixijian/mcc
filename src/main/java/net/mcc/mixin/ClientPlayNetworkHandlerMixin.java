@@ -19,7 +19,8 @@ public class ClientPlayNetworkHandlerMixin {
     private void onWorldTimeUpdate(@Coerce Object packet, CallbackInfo ci) {
         try {
             long gameTime = -1;
-            long dayTime = -1;
+            long dayTime = -2; // 使用 -2 作为未初始化的标志，因为 -1 在 dayTime 中有意义 (冻结时间)
+
             // 策略 1: 属性读取 (Record or Class)
             try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "gameTime")).longValue(); } catch (Exception ignored) {}
             try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "dayTime")).longValue(); } catch (Exception ignored) {}
@@ -27,24 +28,50 @@ public class ClientPlayNetworkHandlerMixin {
             if (gameTime == -1) {
                 try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "method_11871")).longValue(); } catch (Exception ignored) {}
             }
-            if (dayTime == -1) {
+            if (dayTime == -2) {
                 try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "method_11870")).longValue(); } catch (Exception ignored) {}
             }
 
-            // 策略 2: 暴力查找 long 字段 (WorldTimeUpdateS2CPacket 通常有两个 long 字段)
-            if (gameTime == -1 || dayTime == -1) {
-                int count = 0;
-                for (java.lang.reflect.Field f : packet.getClass().getDeclaredFields()) {
-                    if (f.getType() == long.class) {
-                        f.setAccessible(true);
-                        long val = f.getLong(packet);
-                        if (count == 0) gameTime = val;
-                        else if (count == 1) dayTime = val;
-                        count++;
+            // 策略 2: 暴力查找 long 字段 (WorldTimeUpdateS2CPacket 通常有两个 long 字段: gameTime, dayTime)
+            if (gameTime == -1 || dayTime == -2) {
+                java.util.List<Long> longFields = new java.util.ArrayList<>();
+                // 如果是 Record 类型，优先遍历 RecordComponents (1.21.2+)
+                if (packet.getClass().isRecord()) {
+                    for (java.lang.reflect.RecordComponent rc : packet.getClass().getRecordComponents()) {
+                        if (rc.getType() == long.class) {
+                            try { longFields.add(((Number) rc.getAccessor().invoke(packet)).longValue()); } catch (Exception ignored) {}
+                        }
                     }
                 }
+
+                // 无论是否是 Record，都扫描字段作为兜底
+                if (longFields.size() < 2) {
+                    for (java.lang.reflect.Field f : packet.getClass().getDeclaredFields()) {
+                        if (f.getType() == long.class && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                            try {
+                                f.setAccessible(true);
+                                longFields.add(f.getLong(packet));
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+
+                if (longFields.size() >= 2) {
+                    if (gameTime == -1) gameTime = longFields.get(0);
+                    if (dayTime == -2) dayTime = longFields.get(1);
+                }
             }
-            if (gameTime != -1) PerformanceMonitor.onWorldTimeUpdate(gameTime, dayTime != -1 ? dayTime : gameTime);
+
+            if (gameTime != -1 && dayTime != -2) {
+                PerformanceMonitor.onWorldTimeUpdate(gameTime, dayTime);
+            } else if (gameTime != -1 || dayTime != -2) {
+                // 容错：如果只拿到了一个，至少同步一个
+                long finalGame = gameTime != -1 ? gameTime : PerformanceMonitor.getLastGameTime();
+                long finalDay = dayTime != -2 ? dayTime : PerformanceMonitor.getLastDayTime();
+                if (finalGame != -1 && finalDay != -2) {
+                    PerformanceMonitor.onWorldTimeUpdate(finalGame, finalDay);
+                }
+            }
         } catch (Exception e) {}
     }
 

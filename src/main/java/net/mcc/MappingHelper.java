@@ -19,13 +19,24 @@ public class MappingHelper {
             // 探测 1.21.4+ (含 1.21.11): MinecraftClient.field_1755 (原 currentScreen: Screen) 变为 (attackCooldown: int)
             Class<?> mc = Class.forName("net.minecraft.class_310");
             try {
+                // 1.21.4+ (含 1.21.11) 特征：field_1755 从 Screen 变为 int (attackCooldown)
                 Field f = mc.getDeclaredField("field_1755");
                 if (f.getType() == int.class) is1214 = true;
+
+                // 进一步校验：如果是 1.21.11，field_1752 应该是 int (itemUseCooldown)
+                if (!is1214) {
+                    Field f2 = mc.getDeclaredField("field_1752");
+                    if (f2.getType() == int.class) is1214 = true;
+                }
             } catch (Exception e) {
-                // 回退策略 1: 检查 ClientPlayNetworkHandler 是否存在 field_52609
+                // 回退策略 1: 检查 ClientPlayNetworkHandler 是否存在 1.21.4+ 的字段 (playerListEntries)
                 try {
-                    Class.forName("net.minecraft.class_634").getDeclaredField("field_52609");
-                    is1214 = true;
+                    Class<?> cph = Class.forName("net.minecraft.class_634");
+                    try { cph.getDeclaredField("field_52609"); is1214 = true; } catch (Exception ignored) {}
+                    if (!is1214) {
+                        // 1.21.11 可能的变化：尝试探测 ClientPlayNetworkHandler 中的特定方法
+                        try { cph.getDeclaredMethod("method_2883"); is1214 = true; } catch (Exception ignored) {}
+                    }
                 } catch (Exception e2) {
                     // 回退策略 2: 检查 InteractionManager 是否存在 1.21.4+ 的方法名
                     try {
@@ -351,6 +362,9 @@ public class MappingHelper {
         if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
         if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
+        if (yarnName.equals("dayTime")) { names.add("method_11870"); names.add("comp_2191"); }
+        if (yarnName.equals("gameTime")) { names.add("method_11871"); names.add("comp_2190"); }
+        if (yarnName.equals("getTimeOfDay")) { names.add("method_8510"); }
         if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
         if (yarnName.equals("getAttackCooldownProgressPerTick")) { names.add("method_26352"); }
