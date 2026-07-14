@@ -12,41 +12,87 @@ import java.util.Map;
  */
 public class MappingHelper {
     private static final Map<String, String> MAPPINGS = new HashMap<>();
+    private static final Map<String, Class<?>> CLASS_CACHE = new HashMap<>();
+    private static final Class<?> NOT_FOUND_MARKER = Void.class;
     public static boolean is1214 = false;
 
     static {
+        // 1. 优先采用 Fabric Loader API 获取并解析真实的 Minecraft 版本
         try {
-            // 探测 1.21.4+ (含 1.21.11): MinecraftClient.field_1755 (原 currentScreen: Screen) 变为 (attackCooldown: int)
-            Class<?> mc = Class.forName("net.minecraft.class_310");
-            try {
-                // 1.21.4+ (含 1.21.11) 特征：field_1755 从 Screen 变为 int (attackCooldown)
-                Field f = mc.getDeclaredField("field_1755");
-                if (f.getType() == int.class) is1214 = true;
-
-                // 进一步校验：如果是 1.21.11，field_1752 应该是 int (itemUseCooldown)
-                if (!is1214) {
-                    Field f2 = mc.getDeclaredField("field_1752");
-                    if (f2.getType() == int.class) is1214 = true;
-                }
-            } catch (Exception e) {
-                // 回退策略 1: 检查 ClientPlayNetworkHandler 是否存在 1.21.4+ 的字段 (playerListEntries)
-                try {
-                    Class<?> cph = Class.forName("net.minecraft.class_634");
-                    try { cph.getDeclaredField("field_52609"); is1214 = true; } catch (Exception ignored) {}
-                    if (!is1214) {
-                        // 1.21.11 可能的变化：尝试探测 ClientPlayNetworkHandler 中的特定方法
-                        try { cph.getDeclaredMethod("method_2883"); is1214 = true; } catch (Exception ignored) {}
+            Class<?> flClass = Class.forName("net.fabricmc.loader.api.FabricLoader");
+            Object flInstance = flClass.getMethod("getInstance").invoke(null);
+            Object mcModOpt = flClass.getMethod("getModContainer", String.class).invoke(flInstance, "minecraft");
+            if (mcModOpt != null) {
+                java.util.Optional<?> opt = (java.util.Optional<?>) mcModOpt;
+                if (opt.isPresent()) {
+                    Object mcMod = opt.get();
+                    Object metadata = mcMod.getClass().getMethod("getMetadata").invoke(mcMod);
+                    Object versionObj = metadata.getClass().getMethod("getVersion").invoke(metadata);
+                    String version = (String) versionObj.getClass().getMethod("getFriendlyString").invoke(versionObj);
+                    if (version != null) {
+                        String[] parts = version.split("\\.");
+                        if (parts.length >= 2) {
+                            int major = Integer.parseInt(parts[1].replaceAll("[^0-9]", ""));
+                            if (major > 21) {
+                                is1214 = true;
+                            } else if (major == 21 && parts.length >= 3) {
+                                int minor = Integer.parseInt(parts[2].replaceAll("[^0-9]", ""));
+                                if (minor >= 4) {
+                                    is1214 = true;
+                                }
+                            }
+                        }
                     }
-                } catch (Exception e2) {
-                    // 回退策略 2: 检查 InteractionManager 是否存在 1.21.4+ 的方法名
-                    try {
-                        Class<?> im = Class.forName("net.minecraft.class_636");
-                        im.getDeclaredMethod("method_2919", Class.forName("net.minecraft.class_1657"), Class.forName("net.minecraft.class_1268"));
-                        is1214 = true;
-                    } catch (Exception ignored) {}
                 }
             }
         } catch (Throwable ignored) {}
+
+        // 2. 兜底反射策略 A: 探测 MinecraftClient 字段类型变化 (1.21.4+ 具有 int 类型的 field_1755 或 field_1752)
+        if (!is1214) {
+            try {
+                Class<?> mc = Class.forName("net.minecraft.class_310");
+                try {
+                    Field f = mc.getDeclaredField("field_1755");
+                    // 1.21.1 下 field_1755 是 Screen 类型，1.21.4+ 下是 int 类型 (attackCooldown)
+                    if (f.getType() == int.class) {
+                        is1214 = true;
+                    }
+                } catch (Throwable ignored) {}
+
+                if (!is1214) {
+                    try {
+                        Field f2 = mc.getDeclaredField("field_1752");
+                        // 1.21.1 下 field_1752 是 int 类型 (attackCooldown)，
+                        // 但在 1.21.4+ 下 field_1752 依然是 int 类型 (itemUseCooldown)。
+                        // 故仅作为辅助验证。
+                        if (f2.getType() == int.class) {
+                            // 为了严谨性，仅当 field_1755 无法被获取（如混淆环境且 fallback 块执行）时才通过该项补充
+                            is1214 = true;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // 3. 兜底反射策略 B: 检查 ClientPlayNetworkHandler 1.21.4+ 特异性字段和方法
+        if (!is1214) {
+            try {
+                Class<?> cph = Class.forName("net.minecraft.class_634");
+                try {
+                    // field_52609 为 1.21.4+ 新增的 playerListEntries 字段
+                    cph.getDeclaredField("field_52609");
+                    is1214 = true;
+                } catch (Throwable ignored) {}
+
+                if (!is1214) {
+                    try {
+                        // method_2883 为 1.21.11 等特异增加的方法名
+                        cph.getDeclaredMethod("method_2883");
+                        is1214 = true;
+                    } catch (Throwable ignored) {}
+                }
+            } catch (Throwable ignored) {}
+        }
 
         // 类名映射
         MAPPINGS.put("MinecraftClient", "net/minecraft/class_310");
@@ -75,6 +121,7 @@ public class MappingHelper {
         MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
+        MAPPINGS.put("FishingRodItem", "net/minecraft/class_1787");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -100,7 +147,7 @@ public class MappingHelper {
         MAPPINGS.put("gameProfile", "field_3944");
         MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
         MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
-        MAPPINGS.put("ITEM", "field_41175");
+        MAPPINGS.put("ITEM", "field_41178");
         MAPPINGS.put("lastAttackedTicks", "field_6010");
         MAPPINGS.put("hurtResistantTime", "field_6008");
         MAPPINGS.put("hurtTime", "field_6007");
@@ -191,15 +238,27 @@ public class MappingHelper {
     }
 
     public static Class<?> getClass(String yarnName) throws ClassNotFoundException {
+        if (CLASS_CACHE.containsKey(yarnName)) {
+            Class<?> cached = CLASS_CACHE.get(yarnName);
+            if (cached == NOT_FOUND_MARKER) throw new ClassNotFoundException(yarnName);
+            return cached;
+        }
+
         String mapped = map(yarnName).replace('/', '.');
         try {
-            return Class.forName(mapped);
+            Class<?> clazz = Class.forName(mapped);
+            CLASS_CACHE.put(yarnName, clazz);
+            return clazz;
         } catch (ClassNotFoundException e) {
-            // 针对 1.21.11+ 的官方名回退策略
             String official = getOfficialClassName(yarnName);
             if (official != null) {
-                try { return Class.forName(official); } catch (ClassNotFoundException ignored) {}
+                try {
+                    Class<?> clazz = Class.forName(official);
+                    CLASS_CACHE.put(yarnName, clazz);
+                    return clazz;
+                } catch (ClassNotFoundException ignored) {}
             }
+            CLASS_CACHE.put(yarnName, NOT_FOUND_MARKER);
             throw e;
         }
     }
@@ -215,6 +274,7 @@ public class MappingHelper {
             case "TextColor": return "net.minecraft.network.chat.TextColor";
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
+            case "FishingRodItem": return "net.minecraft.item.FishingRodItem";
             default: return null;
         }
     }
