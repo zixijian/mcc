@@ -144,7 +144,7 @@ public class MappingHelper {
         MAPPINGS.put("gameProfile", "field_3944");
         MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
         MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
-        MAPPINGS.put("ITEM", "field_41175");
+        MAPPINGS.put("ITEM", "field_41178");
         MAPPINGS.put("lastAttackedTicks", "field_6010");
         MAPPINGS.put("hurtResistantTime", "field_6008");
         MAPPINGS.put("hurtTime", "field_6007");

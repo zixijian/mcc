@@ -350,15 +350,33 @@ public class AutomationManager {
                         if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
                             Object item = MappingHelper.invokeMethod(stack, "getItem");
                             if (item != null) {
-                                String sid = item.toString();
-                                if (sid.contains("fishing_rod")) {
-                                    isFishingRod = true;
-                                } else {
-                                    Object registry = MappingHelper.getRegistry("ITEM");
-                                    if (registry != null) {
-                                        Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
-                                        if (identifier != null && identifier.toString().contains("fishing_rod")) {
+                                // 1. 优先采用 Class 类型进行匹配，完全免疫混淆和无界面打包等复杂环境
+                                try {
+                                    Class<?> rodClass = Class.forName("net.minecraft.class_1787"); // FishingRodItem intermediary
+                                    if (rodClass.isInstance(item)) {
+                                        isFishingRod = true;
+                                    }
+                                } catch (Exception ignored1) {
+                                    try {
+                                        Class<?> rodClass = Class.forName("net.minecraft.item.FishingRodItem");
+                                        if (rodClass.isInstance(item)) {
                                             isFishingRod = true;
+                                        }
+                                    } catch (Exception ignored2) {}
+                                }
+
+                                // 2. 兜底策略：字符串及注册表查询
+                                if (!isFishingRod) {
+                                    String sid = item.toString();
+                                    if (sid.contains("fishing_rod")) {
+                                        isFishingRod = true;
+                                    } else {
+                                        Object registry = MappingHelper.getRegistry("ITEM");
+                                        if (registry != null) {
+                                            Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
+                                            if (identifier != null && identifier.toString().contains("fishing_rod")) {
+                                                isFishingRod = true;
+                                            }
                                         }
                                     }
                                 }
