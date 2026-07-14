@@ -12,6 +12,8 @@ import java.util.Map;
  */
 public class MappingHelper {
     private static final Map<String, String> MAPPINGS = new HashMap<>();
+    private static final Map<String, Class<?>> CLASS_CACHE = new HashMap<>();
+    private static final Class<?> NOT_FOUND_MARKER = Void.class;
     public static boolean is1214 = false;
 
     static {
@@ -119,6 +121,7 @@ public class MappingHelper {
         MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
+        MAPPINGS.put("FishingRodItem", "net/minecraft/class_1787");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -235,15 +238,27 @@ public class MappingHelper {
     }
 
     public static Class<?> getClass(String yarnName) throws ClassNotFoundException {
+        if (CLASS_CACHE.containsKey(yarnName)) {
+            Class<?> cached = CLASS_CACHE.get(yarnName);
+            if (cached == NOT_FOUND_MARKER) throw new ClassNotFoundException(yarnName);
+            return cached;
+        }
+
         String mapped = map(yarnName).replace('/', '.');
         try {
-            return Class.forName(mapped);
+            Class<?> clazz = Class.forName(mapped);
+            CLASS_CACHE.put(yarnName, clazz);
+            return clazz;
         } catch (ClassNotFoundException e) {
-            // 针对 1.21.11+ 的官方名回退策略
             String official = getOfficialClassName(yarnName);
             if (official != null) {
-                try { return Class.forName(official); } catch (ClassNotFoundException ignored) {}
+                try {
+                    Class<?> clazz = Class.forName(official);
+                    CLASS_CACHE.put(yarnName, clazz);
+                    return clazz;
+                } catch (ClassNotFoundException ignored) {}
             }
+            CLASS_CACHE.put(yarnName, NOT_FOUND_MARKER);
             throw e;
         }
     }
@@ -259,6 +274,7 @@ public class MappingHelper {
             case "TextColor": return "net.minecraft.network.chat.TextColor";
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
+            case "FishingRodItem": return "net.minecraft.item.FishingRodItem";
             default: return null;
         }
     }
