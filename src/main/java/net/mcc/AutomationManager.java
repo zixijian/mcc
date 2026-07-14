@@ -338,33 +338,68 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
-            // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
-            MappingHelper.invokeMethod(client, "doItemUse");
-
-            // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
-            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
-            if (target == null) {
-                for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
-                    if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
-                        f.setAccessible(true); target = f.get(client); if (target != null) break;
+            // 检查当前手持物品是否为钓鱼竿
+            boolean isFishingRod = false;
+            try {
+                Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                if (inv != null) {
+                    int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                    Object main = MappingHelper.getFieldValue(inv, "main", null);
+                    if (main instanceof java.util.List) {
+                        Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                        if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
+                            Object item = MappingHelper.invokeMethod(stack, "getItem");
+                            if (item != null) {
+                                String sid = item.toString();
+                                if (sid.contains("fishing_rod")) {
+                                    isFishingRod = true;
+                                } else {
+                                    Object registry = MappingHelper.getRegistry("ITEM");
+                                    if (registry != null) {
+                                        Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
+                                        if (identifier != null && identifier.toString().contains("fishing_rod")) {
+                                            isFishingRod = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            }
+            } catch (Exception ignored) {}
 
-            if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                if (res != null) {
-                    boolean accepted = false;
-                    try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
-                        if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
+            if (isFishingRod) {
+                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，配合 useOnce 等逻辑防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
+                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+            } else {
+                // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
+                MappingHelper.invokeMethod(client, "doItemUse");
+
+                // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
+                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+                if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
+                if (target == null) {
+                    for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
+                        if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
+                            f.setAccessible(true); target = f.get(client); if (target != null) break;
+                        }
                     }
-                    if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
                 }
-            }
 
-            // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
-            MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
+                    if (res != null) {
+                        boolean accepted = false;
+                        try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
+                            if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
+                        }
+                        if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
+                    }
+                }
+
+                // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
+                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+            }
 
             // 4. 强制触发挥手
             boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
