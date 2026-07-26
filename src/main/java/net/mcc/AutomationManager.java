@@ -296,7 +296,8 @@ public class AutomationManager {
                         }
 
                         pressKeyTranslation(client, "key.use");
-                        if (!isCurrentlyUsing) {
+                        // 避免每 tick 都重复调用 doItemUse 导致重置/打断进食
+                        if (!isCurrentlyUsing && !eatingStartedUsing && eatingTimeoutTicks % 10 == 0) {
                             triggerItemUse(client, player);
                         }
 
@@ -426,6 +427,51 @@ public class AutomationManager {
         return false;
     }
 
+    private static boolean isConsumableFallback(Object stack) {
+        try {
+            Object item = MappingHelper.invokeMethod(stack, "getItem");
+            if (item == null) return false;
+            String sid = item.toString().toLowerCase();
+
+            // Check registry ID
+            Object registry = MappingHelper.getRegistry("ITEM");
+            if (registry != null) {
+                Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
+                if (identifier != null) {
+                    sid = identifier.toString().toLowerCase();
+                }
+            }
+
+            // Potion check
+            if (sid.contains("potion")) {
+                if (sid.contains("splash") || sid.contains("lingering")) {
+                    return false;
+                }
+                return true;
+            }
+            if (sid.contains("honey_bottle") || sid.contains("milk_bucket")) {
+                return true;
+            }
+
+            // Food check
+            if (sid.contains("seed") || sid.contains("stick") || sid.contains("bowl") || (sid.contains("bucket") && !sid.contains("milk"))) {
+                return false;
+            }
+
+            String[] foodKeywords = {
+                "apple", "carrot", "potato", "kelp", "berry", "berries", "melon", "bread", "cookie", "pie",
+                "stew", "soup", "flesh", "chicken", "porkchop", "beef", "mutton", "rabbit", "cod", "salmon",
+                "tropical_fish", "pufferfish", "spider_eye", "beetroot", "cake", "chorus_fruit"
+            };
+            for (String kw : foodKeywords) {
+                if (sid.contains(kw)) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     private static boolean isConsumable(Object player) {
         Object stack = getMainHandStack(player);
         if (stack == null) return false;
@@ -439,7 +485,7 @@ public class AutomationManager {
                 return true;
             }
         } catch (Exception ignored) {}
-        return false;
+        return isConsumableFallback(stack);
     }
 
     private static void triggerAttack(Object client, Object player) {
