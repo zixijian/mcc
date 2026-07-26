@@ -22,6 +22,7 @@ public class AutomationManager {
     private static boolean eatingStartedUsing = false;
     private static int eatingTimeoutTicks = 0;
     private static int eatingCooldownTimer = 0;
+    private static long lastProcessedGameTime = -1;
 
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
@@ -195,6 +196,21 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
+            // 避免在同一个 Tick 内被多个 Mixin 入口重复调用导致状态计数器跑快一倍、连击两次等问题
+            Object world = CommandDispatcher.getClientWorld();
+            if (world != null) {
+                long gameTime = -1;
+                try {
+                    gameTime = ((Number) MappingHelper.invokeMethod(world, "gameTime")).longValue();
+                } catch (Exception ignored) {}
+                if (gameTime != -1) {
+                    if (gameTime == lastProcessedGameTime) {
+                        return;
+                    }
+                    lastProcessedGameTime = gameTime;
+                }
+            }
+
             // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
             Object currentScreen = null;
             try {
@@ -282,7 +298,10 @@ public class AutomationManager {
                             eatingTimeoutTicks = 0;
                             resetUseCooldown(client);
                             pressKeyTranslation(client, "key.use");
-                            triggerItemUse(client, player);
+                            // 仅调用原生 doItemUse 一次，避免 triggerItemUse 中的多重交互（interactItem）导致连续两次挥手
+                            try {
+                                MappingHelper.invokeMethod(client, "doItemUse");
+                            } catch (Exception ignored) {}
                         }
                     } else {
                         eatingTimeoutTicks++;
@@ -296,9 +315,11 @@ public class AutomationManager {
                         }
 
                         pressKeyTranslation(client, "key.use");
-                        // 避免每 tick 都重复调用 doItemUse 导致重置/打断进食
+                        // 避免每 tick 都调用 doItemUse 导致重置进食，如果未开始使用，每 10 tick 重试一次 doItemUse
                         if (!isCurrentlyUsing && !eatingStartedUsing && eatingTimeoutTicks % 10 == 0) {
-                            triggerItemUse(client, player);
+                            try {
+                                MappingHelper.invokeMethod(client, "doItemUse");
+                            } catch (Exception ignored) {}
                         }
 
                         boolean isComplete = false;
