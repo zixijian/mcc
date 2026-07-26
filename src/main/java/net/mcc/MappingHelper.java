@@ -122,6 +122,7 @@ public class MappingHelper {
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
         MAPPINGS.put("FishingRodItem", "net/minecraft/class_1787");
+        MAPPINGS.put("UseAction", "net/minecraft/class_1839");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -231,6 +232,7 @@ public class MappingHelper {
         MAPPINGS.put("EntityAttributes", "net/minecraft/class_1320");
         MAPPINGS.put("GENERIC_ATTACK_SPEED", is1214 ? "field_55212" : "field_6338");
         MAPPINGS.put("getAttributeValue", "method_6125");
+        MAPPINGS.put("getUseAction", "method_7951");
     }
 
     public static String map(String name) {
@@ -275,6 +277,7 @@ public class MappingHelper {
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
             case "FishingRodItem": return "net.minecraft.item.FishingRodItem";
+            case "UseAction": return "net.minecraft.world.item.UseAnim";
             default: return null;
         }
     }
@@ -439,6 +442,7 @@ public class MappingHelper {
         if (yarnName.equals("isEmpty")) { names.add("method_7960"); }
         if (yarnName.equals("getMaxDamage")) { names.add("method_7936"); }
         if (yarnName.equals("getDamage")) { names.add("method_7919"); }
+        if (yarnName.equals("getUseAction")) { names.add("method_7951"); }
 
         for (String name : names) {
             try { return invokeMethodInternal(targetObj, clazz, name, args); } catch (NoSuchMethodException ignored) {}
