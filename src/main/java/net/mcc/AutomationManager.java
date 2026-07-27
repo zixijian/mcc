@@ -308,32 +308,37 @@ public class AutomationManager {
             // 4. 长按使用逻辑 (luse)
             if (longPressUseCount >= 0) {
                 resetUseCooldown(client);
-                pressKeyTranslation(client, "key.use");
 
                 boolean isUsing = false;
                 try {
                     isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 } catch (Exception ignored) {}
 
-                if (isUsing) {
+                if (!lastTickIsUsing && !isUsing) {
+                    // 首次触发时：检查 lastTickIsUsing 和 isUsing 都为 false
+                    pressKeyTranslation(client, "key.use");
+                    triggerItemUse(client, player);
+                    lastTickIsUsing = true;
+                } else if (isUsing) {
+                    // 保持阶段：当 isUsing 为 true 时，保持按键被按下状态（不做任何操作）
+                    pressKeyTranslation(client, "key.use");
                     lastTickIsUsing = true;
                 } else {
-                    if (lastTickIsUsing) {
-                        lastTickIsUsing = false;
-                        if (longPressUseCount > 0) {
-                            longPressUseCount--;
-                            if (longPressUseCount == 0) {
-                                longPressUseCount = -1;
-                                releaseKeyTranslation(client, "key.use");
-                                CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
-                            } else {
-                                triggerItemUse(client, player);
-                            }
+                    // 释放阶段：当 lastTickIsUsing 为 true 且 isUsing 为 false 时
+                    if (longPressUseCount > 0) {
+                        longPressUseCount--;
+                        if (longPressUseCount == 0) {
+                            longPressUseCount = -1;
+                            lastTickIsUsing = false;
+                            releaseKeyTranslation(client, "key.use");
+                            CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
                         } else {
-                            triggerItemUse(client, player);
+                            // 继续下一次，设置 lastTickIsUsing 为 false 从而在下个 tick 重新触发
+                            lastTickIsUsing = false;
                         }
                     } else {
-                        triggerItemUse(client, player);
+                        // 循环模式：设置 lastTickIsUsing 为 false 从而在下个 tick 重新触发
+                        lastTickIsUsing = false;
                     }
                 }
             }
