@@ -17,6 +17,31 @@ public class AutomationManager {
     private static Float lockedPitch = null;
     private static Float lockedYaw = null;
 
+    private static int longPressUseCount = -1;
+    private static boolean lastTickIsUsing = false;
+
+    public static void setLongPressUse(int count, boolean hasArgs) {
+        if (!hasArgs) {
+            longPressUseCount = 1;
+            lastTickIsUsing = false;
+            CommandDispatcher.addFeedback("§a模拟长按使用一次");
+            return;
+        }
+        if (count < 0) {
+            longPressUseCount = -1;
+            lastTickIsUsing = false;
+            try {
+                Object client = CommandDispatcher.getClient();
+                releaseKeyTranslation(client, "key.use");
+            } catch (Exception ignored) {}
+            CommandDispatcher.addFeedback("§a关闭长按使用");
+            return;
+        }
+        longPressUseCount = count;
+        lastTickIsUsing = false;
+        CommandDispatcher.addFeedback("§a长按使用任务已设定: " + (count == 0 ? "无限循环" : count + " 次"));
+    }
+
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
             attackOnce = true;
@@ -104,6 +129,8 @@ public class AutomationManager {
         attackFreq = -1; useFreq = -1;
         attackOnce = useOnce = false;
         lockedPitch = lockedYaw = null;
+        longPressUseCount = -1;
+        lastTickIsUsing = false;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -113,7 +140,7 @@ public class AutomationManager {
     }
 
     public static void showStatus() {
-        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Rsp:%b", attackFreq, useFreq, autoRespawn));
+        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%d Rsp:%b", attackFreq, useFreq, longPressUseCount, autoRespawn));
     }
 
     public static void probeMappings() {
@@ -275,6 +302,39 @@ public class AutomationManager {
                     incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
                     useTimer = useFreq;
+                }
+            }
+
+            // 4. 长按使用逻辑 (luse)
+            if (longPressUseCount >= 0) {
+                resetUseCooldown(client);
+                pressKeyTranslation(client, "key.use");
+
+                boolean isUsing = false;
+                try {
+                    isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+                } catch (Exception ignored) {}
+
+                if (isUsing) {
+                    lastTickIsUsing = true;
+                } else {
+                    if (lastTickIsUsing) {
+                        lastTickIsUsing = false;
+                        if (longPressUseCount > 0) {
+                            longPressUseCount--;
+                            if (longPressUseCount == 0) {
+                                longPressUseCount = -1;
+                                releaseKeyTranslation(client, "key.use");
+                                CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
+                            } else {
+                                triggerItemUse(client, player);
+                            }
+                        } else {
+                            triggerItemUse(client, player);
+                        }
+                    } else {
+                        triggerItemUse(client, player);
+                    }
                 }
             }
         } catch (Throwable ignored) {}

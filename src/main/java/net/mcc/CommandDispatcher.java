@@ -94,6 +94,14 @@ public class CommandDispatcher {
                         addFeedback("§c参数必须是数字");
                     }
                     break;
+                case "luse":
+                    try {
+                        int count = parts.length > 2 ? Integer.parseInt(parts[2]) : 1;
+                        AutomationManager.setLongPressUse(count, parts.length > 2);
+                    } catch (NumberFormatException e) {
+                        addFeedback("§c参数必须是数字");
+                    }
+                    break;
                 case "respawn": AutomationManager.toggleAutoRespawn(); break;
                 case "look":
                     if (parts.length > 3) {
@@ -122,7 +130,7 @@ public class CommandDispatcher {
         addFeedback("§b[MCC 命令列表]");
         addFeedback("§f/mcc time | list | hp | xp | tps");
         addFeedback("§f/mcc choose/cs <slot> | slot [slot] | tools | drop [slot|all]");
-        addFeedback("§f/mcc attack/atk [freq] | use [freq] | respawn");
+        addFeedback("§f/mcc attack/atk [freq] | use [freq] | luse [count] | respawn");
         addFeedback("§f/mcc look <pitch> <yaw>");
         addFeedback("§f/mcc status | stop | tune <1-4>");
     }
