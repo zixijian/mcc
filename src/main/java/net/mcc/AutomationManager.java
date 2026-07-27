@@ -298,9 +298,14 @@ public class AutomationManager {
                             eatingTimeoutTicks = 0;
                             resetUseCooldown(client);
                             pressKeyTranslation(client, "key.use");
-                            // 仅调用原生 doItemUse 一次，避免 triggerItemUse 中的多重交互（interactItem）导致连续两次挥手
+                            // 直接且仅触发 interactItem 交互，绕过 doItemUse 以避免触发目标方块交互（如打开箱子）或双重交互挥手
                             try {
-                                MappingHelper.invokeMethod(client, "doItemUse");
+                                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                                Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+                                if (im != null && mainHand != null) {
+                                    MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
+                                }
                             } catch (Exception ignored) {}
                         }
                     } else {
@@ -315,10 +320,15 @@ public class AutomationManager {
                         }
 
                         pressKeyTranslation(client, "key.use");
-                        // 避免每 tick 都调用 doItemUse 导致重置进食，如果未开始使用，每 10 tick 重试一次 doItemUse
+                        // 避免每 tick 重复调用导致重置/打断进食。若在第 10 tick 仍未进入 isUsingItem 状态，则执行一次重试
                         if (!isCurrentlyUsing && !eatingStartedUsing && eatingTimeoutTicks % 10 == 0) {
                             try {
-                                MappingHelper.invokeMethod(client, "doItemUse");
+                                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                                Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+                                if (im != null && mainHand != null) {
+                                    MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
+                                }
                             } catch (Exception ignored) {}
                         }
 
