@@ -18,18 +18,18 @@ public class AutomationManager {
     private static Float lockedYaw = null;
 
     private static int longPressUseCount = -1;
-    private static boolean lastTickIsUsing = false;
+    private static int longPressUseStage = 0; // 0 = 未开始, 1 = 已启动, 2 = 保持中
 
     public static void setLongPressUse(int count, boolean hasArgs) {
         if (!hasArgs) {
             longPressUseCount = 1;
-            lastTickIsUsing = false;
+            longPressUseStage = 0;
             CommandDispatcher.addFeedback("§a模拟长按使用一次");
             return;
         }
         if (count < 0) {
             longPressUseCount = -1;
-            lastTickIsUsing = false;
+            longPressUseStage = 0;
             try {
                 Object client = CommandDispatcher.getClient();
                 releaseKeyTranslation(client, "key.use");
@@ -38,7 +38,7 @@ public class AutomationManager {
             return;
         }
         longPressUseCount = count;
-        lastTickIsUsing = false;
+        longPressUseStage = 0;
         CommandDispatcher.addFeedback("§a长按使用任务已设定: " + (count == 0 ? "无限循环" : count + " 次"));
     }
 
@@ -130,7 +130,7 @@ public class AutomationManager {
         attackOnce = useOnce = false;
         lockedPitch = lockedYaw = null;
         longPressUseCount = -1;
-        lastTickIsUsing = false;
+        longPressUseStage = 0;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -314,31 +314,36 @@ public class AutomationManager {
                     isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 } catch (Exception ignored) {}
 
-                if (!lastTickIsUsing && !isUsing) {
-                    // 首次触发时：检查 lastTickIsUsing 和 isUsing 都为 false
+                if (longPressUseStage == 0) {
+                    // 未开始阶段：开始按键，触发初次使用交互
                     pressKeyTranslation(client, "key.use");
                     triggerItemUse(client, player);
-                    lastTickIsUsing = true;
-                } else if (isUsing) {
-                    // 保持阶段：当 isUsing 为 true 时，保持按键被按下状态（不做任何操作）
+                    longPressUseStage = 1; // 转换为已启动阶段
+                } else if (longPressUseStage == 1) {
+                    // 已启动阶段：保持按键，等待 isUsingItem 变为 true
                     pressKeyTranslation(client, "key.use");
-                    lastTickIsUsing = true;
-                } else {
-                    // 释放阶段：当 lastTickIsUsing 为 true 且 isUsing 为 false 时
-                    if (longPressUseCount > 0) {
-                        longPressUseCount--;
-                        if (longPressUseCount == 0) {
-                            longPressUseCount = -1;
-                            lastTickIsUsing = false;
-                            releaseKeyTranslation(client, "key.use");
-                            CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
-                        } else {
-                            // 继续下一次，设置 lastTickIsUsing 为 false 从而在下个 tick 重新触发
-                            lastTickIsUsing = false;
-                        }
+                    if (isUsing) {
+                        longPressUseStage = 2; // 转换为保持中阶段
+                    }
+                } else if (longPressUseStage == 2) {
+                    // 保持中阶段：保持按键，直到 isUsingItem 变为 false（使用完毕）
+                    if (isUsing) {
+                        pressKeyTranslation(client, "key.use");
                     } else {
-                        // 循环模式：设置 lastTickIsUsing 为 false 从而在下个 tick 重新触发
-                        lastTickIsUsing = false;
+                        // 使用完成释放阶段
+                        releaseKeyTranslation(client, "key.use");
+                        if (longPressUseCount > 0) {
+                            longPressUseCount--;
+                            if (longPressUseCount == 0) {
+                                longPressUseCount = -1;
+                                longPressUseStage = 0;
+                                CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
+                            } else {
+                                longPressUseStage = 0; // 重置为未开始，等待下一个 tick 重新启动
+                            }
+                        } else {
+                            longPressUseStage = 0; // 0 为无限循环，重置为未开始
+                        }
                     }
                 }
             }
