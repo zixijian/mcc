@@ -10,23 +10,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 拦截客户端发送的命令并处理 Tick
+ * 拦截客户端发送的命令
  */
 @Mixin(targets = "net.minecraft.class_746") // ClientPlayerEntity
 public class ClientPlayerEntityMixin {
-
-    // tick (1.21.1)
-    @Inject(method = "method_3110", at = @At("HEAD"), remap = false, require = 0)
-    private void onTickPre(CallbackInfo ci) {
-        AutomationManager.onClientTick();
-    }
-
-    // tick (1.21.2+)
-    @Inject(method = "method_5773", at = @At("HEAD"), remap = false, require = 0)
-    private void onTickPreNew(CallbackInfo ci) {
-        AutomationManager.onClientTick();
-    }
-
 
     // 1.21.1 sendCommand (返回 boolean)
     @Inject(method = "method_3111(Ljava/lang/String;)Z", at = @At("HEAD"), cancellable = true, remap = false, require = 0)

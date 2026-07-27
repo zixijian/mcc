@@ -767,6 +767,20 @@ public class AutomationManager {
 
     private static Object findKeyBinding(Object client, String translationKey) throws Exception {
         Object options = MappingHelper.getFieldValue(client, "options", null);
+        if (options != null) {
+            if ("key.use".equals(translationKey)) {
+                try {
+                    Object kb = MappingHelper.getFieldValue(options, "useKey", null);
+                    if (kb != null) return kb;
+                } catch (Exception ignored) {}
+            }
+            if ("key.attack".equals(translationKey)) {
+                try {
+                    Object kb = MappingHelper.getFieldValue(options, "attackKey", null);
+                    if (kb != null) return kb;
+                } catch (Exception ignored) {}
+            }
+        }
         Class<?> kbClass = MappingHelper.getClass("KeyBinding");
         Class<?> curr = options.getClass();
         while (curr != null && curr != Object.class) {
