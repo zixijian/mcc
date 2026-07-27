@@ -320,15 +320,17 @@ public class AutomationManager {
                     triggerItemUse(client, player);
                     longPressUseStage = 1; // 转换为已启动阶段
                 } else if (longPressUseStage == 1) {
-                    // 已启动阶段：保持按键，等待 isUsingItem 变为 true
+                    // 已启动阶段：保持按键与持续交互，等待 isUsingItem 变为 true
                     pressKeyTranslation(client, "key.use");
+                    triggerItemUse(client, player);
                     if (isUsing) {
                         longPressUseStage = 2; // 转换为保持中阶段
                     }
                 } else if (longPressUseStage == 2) {
-                    // 保持中阶段：保持按键，直到 isUsingItem 变为 false（使用完毕）
+                    // 保持中阶段：保持按键与持续交互，直到 isUsingItem 变为 false（使用完毕）
                     if (isUsing) {
                         pressKeyTranslation(client, "key.use");
+                        triggerItemUse(client, player);
                     } else {
                         // 使用完成释放阶段
                         releaseKeyTranslation(client, "key.use");
