@@ -304,7 +304,6 @@ public class AutomationManager {
                                 Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
                                 if (im != null && mainHand != null) {
                                     MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
                                 }
                             } catch (Exception ignored) {}
                         }
@@ -327,7 +326,6 @@ public class AutomationManager {
                                 Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
                                 if (im != null && mainHand != null) {
                                     MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                                    MappingHelper.invokeMethod(player, "swingHand", mainHand);
                                 }
                             } catch (Exception ignored) {}
                         }
