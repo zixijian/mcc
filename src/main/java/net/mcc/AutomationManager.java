@@ -18,18 +18,21 @@ public class AutomationManager {
     private static Float lockedYaw = null;
 
     private static int longPressUseCount = -1;
-    private static int longPressUseStage = 0; // 0 = 未开始, 1 = 已启动, 2 = 保持中
+    private static int longPressUseStage = 0; // 0 = 未开始, 1 = 保持中, 2 = 延迟中
+    private static int longPressCooldownTicks = 0;
 
     public static void setLongPressUse(int count, boolean hasArgs) {
         if (!hasArgs) {
             longPressUseCount = 1;
             longPressUseStage = 0;
+            longPressCooldownTicks = 0;
             CommandDispatcher.addFeedback("§a模拟长按使用一次");
             return;
         }
         if (count < 0) {
             longPressUseCount = -1;
             longPressUseStage = 0;
+            longPressCooldownTicks = 0;
             try {
                 Object client = CommandDispatcher.getClient();
                 releaseKeyTranslation(client, "key.use");
@@ -39,6 +42,7 @@ public class AutomationManager {
         }
         longPressUseCount = count;
         longPressUseStage = 0;
+        longPressCooldownTicks = 0;
         CommandDispatcher.addFeedback("§a长按使用任务已设定: " + (count == 0 ? "无限循环" : count + " 次"));
     }
 
@@ -131,6 +135,7 @@ public class AutomationManager {
         lockedPitch = lockedYaw = null;
         longPressUseCount = -1;
         longPressUseStage = 0;
+        longPressCooldownTicks = 0;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -320,20 +325,30 @@ public class AutomationManager {
                 } else if (longPressUseStage == 1) {
                     if (isUsing) {
                         resetUseCooldown(client);
+                        pressKeyTranslation(client, "key.use");
                         triggerItemUse(client, player);
                     } else {
+                        releaseKeyTranslation(client, "key.use");
                         incrementKeyCounter(client, "key.use");
+                        boolean finished = false;
                         if (longPressUseCount > 0) {
                             longPressUseCount--;
-                            longPressUseStage = 0;
                             if (longPressUseCount == 0) {
                                 longPressUseCount = -1;
-                                releaseKeyTranslation(client, "key.use");
+                                longPressUseStage = 0;
+                                finished = true;
                                 CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
                             }
-                        } else {
-                            longPressUseStage = 0; // 0 为无限循环
                         }
+                        if (!finished) {
+                            longPressCooldownTicks = 10;
+                            longPressUseStage = 2; // 进入延迟阶段
+                        }
+                    }
+                } else if (longPressUseStage == 2) {
+                    longPressCooldownTicks--;
+                    if (longPressCooldownTicks <= 0) {
+                        longPressUseStage = 0; // 延迟完成，重置为 0 阶段重新触发
                     }
                 }
             }
