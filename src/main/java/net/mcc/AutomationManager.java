@@ -320,8 +320,9 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
 
                 if (longPressUseStage == 0) {
-                    // 首次启动：按下 key.use，让 Minecraft 自动触发使用
+                    // 首次启动：按下 key.use 并增加计数器，让 Minecraft 自动触发使用
                     pressKeyTranslation(client, "key.use");
+                    incrementKeyCounter(client, "key.use");
                     longPressUseStage = 1;
                 } else if (longPressUseStage == 1) {
                     // 保持中：保持按键不放，直到进食完成
