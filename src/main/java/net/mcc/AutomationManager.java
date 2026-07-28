@@ -307,44 +307,32 @@ public class AutomationManager {
 
             // 4. 长按使用逻辑 (luse)
             if (longPressUseCount >= 0) {
-                resetUseCooldown(client);
-
                 boolean isUsing = false;
                 try {
                     isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 } catch (Exception ignored) {}
 
                 if (longPressUseStage == 0) {
-                    // 未开始阶段：开始按键，触发初次使用交互
-                    pressKeyTranslation(client, "key.use");
+                    resetUseCooldown(client);
+                    incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
-                    longPressUseStage = 1; // 转换为已启动阶段
+                    longPressUseStage = 1;
                 } else if (longPressUseStage == 1) {
-                    // 已启动阶段：保持按键与持续交互，等待 isUsingItem 变为 true
-                    pressKeyTranslation(client, "key.use");
-                    triggerItemUse(client, player);
                     if (isUsing) {
-                        longPressUseStage = 2; // 转换为保持中阶段
-                    }
-                } else if (longPressUseStage == 2) {
-                    // 保持中阶段：保持按键与持续交互，直到 isUsingItem 变为 false（使用完毕）
-                    if (isUsing) {
-                        pressKeyTranslation(client, "key.use");
+                        resetUseCooldown(client);
                         triggerItemUse(client, player);
                     } else {
-                        // 使用完成释放阶段
-                        releaseKeyTranslation(client, "key.use");
+                        incrementKeyCounter(client, "key.use");
                         if (longPressUseCount > 0) {
                             longPressUseCount--;
+                            longPressUseStage = 0;
                             if (longPressUseCount == 0) {
                                 longPressUseCount = -1;
-                                longPressUseStage = 0;
+                                releaseKeyTranslation(client, "key.use");
                                 CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
-                            } else {
-                                longPressUseStage = 0; // 重置为未开始，等待下一个 tick 重新启动
                             }
                         } else {
-                            longPressUseStage = 0; // 0 为无限循环，重置为未开始
+                            longPressUseStage = 0; // 0 为无限循环
                         }
                     }
                 }
