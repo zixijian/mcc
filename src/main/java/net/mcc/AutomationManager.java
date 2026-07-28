@@ -19,20 +19,20 @@ public class AutomationManager {
 
     private static int longPressUseCount = -1;
     private static int longPressUseStage = 0; // 0 = 未开始, 1 = 保持中, 2 = 延迟中
-    private static int longPressCooldownTicks = 0;
+    private static int longPressUseDelayTicks = 0;
 
     public static void setLongPressUse(int count, boolean hasArgs) {
         if (!hasArgs) {
             longPressUseCount = 1;
             longPressUseStage = 0;
-            longPressCooldownTicks = 0;
+            longPressUseDelayTicks = 0;
             CommandDispatcher.addFeedback("§a模拟长按使用一次");
             return;
         }
         if (count < 0) {
             longPressUseCount = -1;
             longPressUseStage = 0;
-            longPressCooldownTicks = 0;
+            longPressUseDelayTicks = 0;
             try {
                 Object client = CommandDispatcher.getClient();
                 releaseKeyTranslation(client, "key.use");
@@ -42,7 +42,7 @@ public class AutomationManager {
         }
         longPressUseCount = count;
         longPressUseStage = 0;
-        longPressCooldownTicks = 0;
+        longPressUseDelayTicks = 0;
         CommandDispatcher.addFeedback("§a长按使用任务已设定: " + (count == 0 ? "无限循环" : count + " 次"));
     }
 
@@ -135,7 +135,7 @@ public class AutomationManager {
         lockedPitch = lockedYaw = null;
         longPressUseCount = -1;
         longPressUseStage = 0;
-        longPressCooldownTicks = 0;
+        longPressUseDelayTicks = 0;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -312,24 +312,26 @@ public class AutomationManager {
 
             // 4. 长按使用逻辑 (luse)
             if (longPressUseCount >= 0) {
+                resetUseCooldown(client);
+
                 boolean isUsing = false;
                 try {
                     isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                 } catch (Exception ignored) {}
 
                 if (longPressUseStage == 0) {
-                    resetUseCooldown(client);
+                    // 首次启动：按下 key.use + 触发交互
+                    pressKeyTranslation(client, "key.use");
                     incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
-                    longPressUseStage = 1;
+                    longPressUseStage = 1;  // 进入保持阶段
                 } else if (longPressUseStage == 1) {
-                    if (isUsing) {
-                        resetUseCooldown(client);
-                        pressKeyTranslation(client, "key.use");
-                        triggerItemUse(client, player);
-                    } else {
+                    // 保持按住：检查是否进食完成
+                    pressKeyTranslation(client, "key.use");
+
+                    if (!isUsing) {
+                        // 进食完成（isUsingItem 从 true 变为 false）
                         releaseKeyTranslation(client, "key.use");
-                        incrementKeyCounter(client, "key.use");
                         boolean finished = false;
                         if (longPressUseCount > 0) {
                             longPressUseCount--;
@@ -340,15 +342,16 @@ public class AutomationManager {
                                 CommandDispatcher.addFeedback("§a[luse] 长按使用任务完成");
                             }
                         }
+
                         if (!finished) {
-                            longPressCooldownTicks = 10;
-                            longPressUseStage = 2; // 进入延迟阶段
+                            longPressUseStage = 2;
+                            longPressUseDelayTicks = 0;
                         }
                     }
                 } else if (longPressUseStage == 2) {
-                    longPressCooldownTicks--;
-                    if (longPressCooldownTicks <= 0) {
-                        longPressUseStage = 0; // 延迟完成，重置为 0 阶段重新触发
+                    longPressUseDelayTicks++;
+                    if (longPressUseDelayTicks >= 8) {  // 延迟 8 ticks
+                        longPressUseStage = 0;  // 回到首次启动阶段
                     }
                 }
             }
@@ -489,7 +492,7 @@ public class AutomationManager {
 
             // 4. 强制触发挥手
             boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
-            if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
+            if (!isUsing && longPressUseCount < 0) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
     }
 
