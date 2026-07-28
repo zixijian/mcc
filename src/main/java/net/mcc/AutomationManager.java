@@ -17,6 +17,14 @@ public class AutomationManager {
     private static Float lockedPitch = null;
     private static Float lockedYaw = null;
 
+    private static int luseCount = -1;
+    private static boolean luseLoop = false;
+    private static int luseStage = -1;
+    private static int luseDelayTicks = 0;
+    private static boolean luseWasUsing = false;
+    private static int luseTimeoutTicks = 0;
+    private static int lastSelectedSlot = -1;
+
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
             attackOnce = true;
@@ -68,6 +76,50 @@ public class AutomationManager {
         CommandDispatcher.addFeedback("§a自动使用: " + (freq == -1 ? "关闭" : (freq == 0 ? "持续" : freq + " ticks")));
     }
 
+    public static void setLuse(int count, boolean hasArgs) {
+        attackFreq = -1;
+        useFreq = -1;
+        attackOnce = false;
+        useOnce = false;
+
+        try {
+            Object client = CommandDispatcher.getClient();
+            releaseKeyTranslation(client, "key.attack");
+            releaseKeyTranslation(client, "key.use");
+        } catch (Exception ignored) {}
+
+        if (!hasArgs) {
+            luseCount = 1;
+            luseLoop = false;
+            CommandDispatcher.addFeedback("§a开始模拟长按使用 1 次");
+        } else if (count == 0) {
+            luseCount = -1;
+            luseLoop = true;
+            CommandDispatcher.addFeedback("§a开始循环模拟长按使用");
+        } else {
+            luseCount = count;
+            luseLoop = false;
+            CommandDispatcher.addFeedback("§a开始模拟长按使用 " + count + " 次");
+        }
+
+        luseStage = 0;
+        luseDelayTicks = 0;
+        luseWasUsing = false;
+        luseTimeoutTicks = 0;
+
+        try {
+            Object player = CommandDispatcher.getClientPlayer();
+            if (player != null) {
+                Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                if (inv != null) {
+                    lastSelectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                }
+            }
+        } catch (Exception ignored) {
+            lastSelectedSlot = -1;
+        }
+    }
+
     public static void toggleAutoRespawn() {
         autoRespawn = !autoRespawn;
         CommandDispatcher.addFeedback("§a自动复活: " + (autoRespawn ? "开启" : "关闭"));
@@ -104,12 +156,37 @@ public class AutomationManager {
         attackFreq = -1; useFreq = -1;
         attackOnce = useOnce = false;
         lockedPitch = lockedYaw = null;
+        luseCount = -1;
+        luseLoop = false;
+        luseStage = -1;
+        luseDelayTicks = 0;
+        luseWasUsing = false;
+        luseTimeoutTicks = 0;
+        lastSelectedSlot = -1;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
             releaseKeyTranslation(client, "key.use");
         } catch (Exception e) {}
         CommandDispatcher.addFeedback("§e已停止所有自动行为");
+    }
+
+    public static void stopAllSilently() {
+        attackFreq = -1; useFreq = -1;
+        attackOnce = useOnce = false;
+        lockedPitch = lockedYaw = null;
+        luseCount = -1;
+        luseLoop = false;
+        luseStage = -1;
+        luseDelayTicks = 0;
+        luseWasUsing = false;
+        luseTimeoutTicks = 0;
+        lastSelectedSlot = -1;
+        try {
+            Object client = CommandDispatcher.getClient();
+            releaseKeyTranslation(client, "key.attack");
+            releaseKeyTranslation(client, "key.use");
+        } catch (Exception e) {}
     }
 
     public static void showStatus() {
@@ -187,7 +264,29 @@ public class AutomationManager {
                 Class<?> screenClass = MappingHelper.getClass("Screen");
                 currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
             } catch (Exception ignored) {}
-            if (currentScreen != null) return;
+            if (currentScreen != null) {
+                stopAllSilently();
+                return;
+            }
+
+            int currentSlot = -1;
+            try {
+                Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                if (inv != null) {
+                    currentSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                }
+            } catch (Exception ignored) {}
+
+            if (luseStage != -1) {
+                if (lastSelectedSlot != -1 && currentSlot != lastSelectedSlot) {
+                    stopAllSilently();
+                    CommandDispatcher.addFeedback("§c切换快捷栏，已停止长按使用");
+                    return;
+                }
+                lastSelectedSlot = currentSlot;
+            } else {
+                lastSelectedSlot = currentSlot;
+            }
 
             // 视角锁定
             if (lockedPitch != null && lockedYaw != null) {
@@ -275,6 +374,72 @@ public class AutomationManager {
                     incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
                     useTimer = useFreq;
+                }
+            }
+
+            // 4. 长按使用逻辑 (luse)
+            if (luseStage != -1) {
+                if (luseStage == 0) {
+                    resetUseCooldown(client);
+                    pressKeyTranslation(client, "key.use");
+                    incrementKeyCounter(client, "key.use");
+
+                    try {
+                        Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                        Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+                        if (im != null && mainHand != null) {
+                            MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                        }
+                    } catch (Exception ignored) {}
+
+                    luseStage = 1;
+                    luseWasUsing = false;
+                    luseTimeoutTicks = 0;
+                } else if (luseStage == 1) {
+                    pressKeyTranslation(client, "key.use");
+                    boolean isUsing = false;
+                    try {
+                        isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+                    } catch (Exception ignored) {}
+
+                    if (isUsing) {
+                        luseWasUsing = true;
+                    }
+
+                    luseTimeoutTicks++;
+
+                    boolean finished = false;
+                    if (luseWasUsing && !isUsing) {
+                        finished = true;
+                    } else if (!luseWasUsing && luseTimeoutTicks > 30) {
+                        finished = true;
+                    }
+
+                    if (finished) {
+                        releaseKeyTranslation(client, "key.use");
+                        luseWasUsing = false;
+                        luseTimeoutTicks = 0;
+
+                        if (luseLoop) {
+                            luseStage = 2;
+                            luseDelayTicks = 0;
+                        } else {
+                            luseCount--;
+                            if (luseCount <= 0) {
+                                luseStage = -1;
+                                CommandDispatcher.addFeedback("§a模拟长按使用完成");
+                            } else {
+                                luseStage = 2;
+                                luseDelayTicks = 0;
+                            }
+                        }
+                    }
+                } else if (luseStage == 2) {
+                    luseDelayTicks++;
+                    if (luseDelayTicks >= 8) {
+                        luseStage = 0;
+                        luseDelayTicks = 0;
+                    }
                 }
             }
         } catch (Throwable ignored) {}
