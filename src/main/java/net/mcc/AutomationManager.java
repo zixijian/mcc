@@ -313,7 +313,6 @@ public class AutomationManager {
             // 4. 长按使用逻辑 (luse)
             if (longPressUseCount >= 0) {
                 resetUseCooldown(client);
-                pressKeyTranslation(client, "key.use");  // 关键：按下并保持！
 
                 boolean isUsing = false;
                 try {
@@ -321,18 +320,18 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
 
                 if (longPressUseStage == 0) {
-                    // 首次启动：只触发一次
-                    if (!isUsing) {
-                        triggerItemUse(client, player);
-                        longPressUseStage = 1;
-                    }
+                    // 首次启动：按下 key.use，让 Minecraft 自动触发使用
+                    pressKeyTranslation(client, "key.use");
+                    longPressUseStage = 1;
                 } else if (longPressUseStage == 1) {
-                    // 保持中：检查进食是否完成
+                    // 保持中：保持按键不放，直到进食完成
+                    pressKeyTranslation(client, "key.use");
+
                     if (!isUsing) {
-                        // 进食完成，释放按键
+                        // 进食完成（isUsingItem 从 true 变为 false）
                         releaseKeyTranslation(client, "key.use");
 
-                        // 关键：直接消耗物品！
+                        // 直接消耗物品
                         try {
                             Object inv = MappingHelper.getFieldValue(player, "inventory", null);
                             if (inv != null) {
@@ -341,7 +340,6 @@ public class AutomationManager {
                                 if (main instanceof java.util.List) {
                                     Object stack = ((java.util.List<?>) main).get(selectedSlot);
                                     if (stack != null) {
-                                        // 调用 ItemStack.decrement(1)
                                         MappingHelper.invokeMethod(stack, "decrement", 1);
                                     }
                                 }
