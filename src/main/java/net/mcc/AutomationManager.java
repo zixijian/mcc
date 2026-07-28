@@ -331,6 +331,23 @@ public class AutomationManager {
                     if (!isUsing) {
                         // 进食完成，释放按键
                         releaseKeyTranslation(client, "key.use");
+
+                        // 关键：直接消耗物品！
+                        try {
+                            Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                            if (inv != null) {
+                                int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                                Object main = MappingHelper.getFieldValue(inv, "main", null);
+                                if (main instanceof java.util.List) {
+                                    Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                                    if (stack != null) {
+                                        // 调用 ItemStack.decrement(1)
+                                        MappingHelper.invokeMethod(stack, "decrement", 1);
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+
                         boolean finished = false;
                         if (longPressUseCount > 0) {
                             longPressUseCount--;
