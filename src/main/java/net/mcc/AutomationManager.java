@@ -325,9 +325,10 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
 
                 if (longPressUseStage == 0) {
-                    // 首次启动：按下 key.use，并增加 click 计数器激发
+                    // 首次启动：按下 key.use 并增加计数器，同步触发交互让 Minecraft 启动使用
                     pressKeyTranslation(client, "key.use");
                     incrementKeyCounter(client, "key.use");
+                    triggerItemUse(client, player);
                     longPressUseStage = 1;
                     longPressTimeout = 0;
                 } else if (longPressUseStage == 1) {
