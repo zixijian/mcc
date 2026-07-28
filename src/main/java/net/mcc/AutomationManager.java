@@ -18,14 +18,16 @@ public class AutomationManager {
     private static Float lockedYaw = null;
 
     private static int longPressUseCount = -1;
-    private static int longPressUseStage = 0; // 0 = 未开始, 1 = 保持中, 2 = 延迟中
+    private static int longPressUseStage = 0; // 0 = 未开始, 1 = 已启动/等待中, 2 = 保持中, 3 = 延迟中
     private static int longPressUseDelayCount = 0;
+    private static int longPressTimeout = 0;
 
     public static void setLongPressUse(int count, boolean hasArgs) {
         if (!hasArgs) {
             longPressUseCount = 1;
             longPressUseStage = 0;
             longPressUseDelayCount = 0;
+            longPressTimeout = 0;
             CommandDispatcher.addFeedback("§a模拟长按使用一次");
             return;
         }
@@ -33,6 +35,7 @@ public class AutomationManager {
             longPressUseCount = -1;
             longPressUseStage = 0;
             longPressUseDelayCount = 0;
+            longPressTimeout = 0;
             try {
                 Object client = CommandDispatcher.getClient();
                 releaseKeyTranslation(client, "key.use");
@@ -43,6 +46,7 @@ public class AutomationManager {
         longPressUseCount = count;
         longPressUseStage = 0;
         longPressUseDelayCount = 0;
+        longPressTimeout = 0;
         CommandDispatcher.addFeedback("§a长按使用任务已设定: " + (count == 0 ? "无限循环" : count + " 次"));
     }
 
@@ -136,6 +140,7 @@ public class AutomationManager {
         longPressUseCount = -1;
         longPressUseStage = 0;
         longPressUseDelayCount = 0;
+        longPressTimeout = 0;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -320,32 +325,32 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
 
                 if (longPressUseStage == 0) {
-                    // 首次启动：按下 key.use 并增加计数器，让 Minecraft 自动触发使用
+                    // 首次启动：按下 key.use，并增加 click 计数器激发
                     pressKeyTranslation(client, "key.use");
                     incrementKeyCounter(client, "key.use");
                     longPressUseStage = 1;
+                    longPressTimeout = 0;
                 } else if (longPressUseStage == 1) {
-                    // 保持中：保持按键不放，直到进食完成
+                    // 已启动/等待中阶段：等待 isUsingItem 在 client 变为 true
+                    pressKeyTranslation(client, "key.use");
+                    if (isUsing) {
+                        longPressUseStage = 2; // 正式进入进行中/保持中阶段
+                    } else {
+                        longPressTimeout++;
+                        if (longPressTimeout > 15) { // 15 tick 超时保护（如空手或物品无法使用）
+                            releaseKeyTranslation(client, "key.use");
+                            longPressUseCount = -1;
+                            longPressUseStage = 0;
+                            CommandDispatcher.addFeedback("§c[luse] 长按超时，目标可能无法使用");
+                        }
+                    }
+                } else if (longPressUseStage == 2) {
+                    // 保持中阶段：只管保持按键状态，直到 isUsingItem 变为 false（完成进食/饮用）
                     pressKeyTranslation(client, "key.use");
 
                     if (!isUsing) {
-                        // 进食完成（isUsingItem 从 true 变为 false）
+                        // 进食完毕，释放按键
                         releaseKeyTranslation(client, "key.use");
-
-                        // 直接消耗物品
-                        try {
-                            Object inv = MappingHelper.getFieldValue(player, "inventory", null);
-                            if (inv != null) {
-                                int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
-                                Object main = MappingHelper.getFieldValue(inv, "main", null);
-                                if (main instanceof java.util.List) {
-                                    Object stack = ((java.util.List<?>) main).get(selectedSlot);
-                                    if (stack != null) {
-                                        MappingHelper.invokeMethod(stack, "decrement", 1);
-                                    }
-                                }
-                            }
-                        } catch (Exception ignored) {}
 
                         boolean finished = false;
                         if (longPressUseCount > 0) {
@@ -359,15 +364,15 @@ public class AutomationManager {
                         }
 
                         if (!finished) {
-                            longPressUseStage = 2;
+                            longPressUseStage = 3;
                             longPressUseDelayCount = 0;
                         }
                     }
-                } else if (longPressUseStage == 2) {
-                    // 冷却延迟阶段（8 ticks）
+                } else if (longPressUseStage == 3) {
+                    // 延迟冷却阶段（8 ticks）
                     longPressUseDelayCount++;
                     if (longPressUseDelayCount >= 8) {
-                        longPressUseStage = 0;  // 回到首次启动阶段
+                        longPressUseStage = 0; // 冷却结束，回到未开始阶段
                     }
                 }
             }
