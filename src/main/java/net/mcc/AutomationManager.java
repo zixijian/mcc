@@ -265,7 +265,9 @@ public class AutomationManager {
                 currentScreen = MappingHelper.findUniqueFieldByType(client, screenClass);
             } catch (Exception ignored) {}
             if (currentScreen != null) {
-                stopAllSilently();
+                if (luseStage == 1 || luseStage == 2) {
+                    stopAllSilently();
+                }
                 return;
             }
 
