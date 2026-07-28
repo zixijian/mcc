@@ -19,20 +19,20 @@ public class AutomationManager {
 
     private static int longPressUseCount = -1;
     private static int longPressUseStage = 0; // 0 = 未开始, 1 = 保持中, 2 = 延迟中
-    private static int longPressUseDelayTicks = 0;
+    private static int longPressUseDelayCount = 0;
 
     public static void setLongPressUse(int count, boolean hasArgs) {
         if (!hasArgs) {
             longPressUseCount = 1;
             longPressUseStage = 0;
-            longPressUseDelayTicks = 0;
+            longPressUseDelayCount = 0;
             CommandDispatcher.addFeedback("§a模拟长按使用一次");
             return;
         }
         if (count < 0) {
             longPressUseCount = -1;
             longPressUseStage = 0;
-            longPressUseDelayTicks = 0;
+            longPressUseDelayCount = 0;
             try {
                 Object client = CommandDispatcher.getClient();
                 releaseKeyTranslation(client, "key.use");
@@ -42,7 +42,7 @@ public class AutomationManager {
         }
         longPressUseCount = count;
         longPressUseStage = 0;
-        longPressUseDelayTicks = 0;
+        longPressUseDelayCount = 0;
         CommandDispatcher.addFeedback("§a长按使用任务已设定: " + (count == 0 ? "无限循环" : count + " 次"));
     }
 
@@ -135,7 +135,7 @@ public class AutomationManager {
         lockedPitch = lockedYaw = null;
         longPressUseCount = -1;
         longPressUseStage = 0;
-        longPressUseDelayTicks = 0;
+        longPressUseDelayCount = 0;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -313,6 +313,7 @@ public class AutomationManager {
             // 4. 长按使用逻辑 (luse)
             if (longPressUseCount >= 0) {
                 resetUseCooldown(client);
+                pressKeyTranslation(client, "key.use");  // 关键：按下并保持！
 
                 boolean isUsing = false;
                 try {
@@ -320,17 +321,15 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
 
                 if (longPressUseStage == 0) {
-                    // 首次启动：按下 key.use + 触发交互
-                    pressKeyTranslation(client, "key.use");
-                    incrementKeyCounter(client, "key.use");
-                    triggerItemUse(client, player);
-                    longPressUseStage = 1;  // 进入保持阶段
-                } else if (longPressUseStage == 1) {
-                    // 保持按住：检查是否进食完成
-                    pressKeyTranslation(client, "key.use");
-
+                    // 首次启动：只触发一次
                     if (!isUsing) {
-                        // 进食完成（isUsingItem 从 true 变为 false）
+                        triggerItemUse(client, player);
+                        longPressUseStage = 1;
+                    }
+                } else if (longPressUseStage == 1) {
+                    // 保持中：检查进食是否完成
+                    if (!isUsing) {
+                        // 进食完成，释放按键
                         releaseKeyTranslation(client, "key.use");
                         boolean finished = false;
                         if (longPressUseCount > 0) {
@@ -345,12 +344,13 @@ public class AutomationManager {
 
                         if (!finished) {
                             longPressUseStage = 2;
-                            longPressUseDelayTicks = 0;
+                            longPressUseDelayCount = 0;
                         }
                     }
                 } else if (longPressUseStage == 2) {
-                    longPressUseDelayTicks++;
-                    if (longPressUseDelayTicks >= 8) {  // 延迟 8 ticks
+                    // 冷却延迟阶段（8 ticks）
+                    longPressUseDelayCount++;
+                    if (longPressUseDelayCount >= 8) {
                         longPressUseStage = 0;  // 回到首次启动阶段
                     }
                 }
