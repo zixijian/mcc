@@ -401,7 +401,6 @@ public class AutomationManager {
                     resetUseCooldown(client);
                     pressKeyTranslation(client, "key.use");
                     incrementKeyCounter(client, "key.use");
-                    triggerItemUse(client, player);
 
                     luseStage = 1;
                     luseWasUsing = false;
@@ -416,33 +415,45 @@ public class AutomationManager {
 
                     if (isUsing) {
                         luseWasUsing = true;
-                    }
+                    } else {
+                        if (luseWasUsing) {
+                            // 曾经在使用，现在不使用了 -> 正常完成一个周期的进食/使用
+                            releaseKeyTranslation(client, "key.use");
+                            luseWasUsing = false;
+                            luseTimeoutTicks = 0;
 
-                    luseTimeoutTicks++;
-
-                    boolean finished = false;
-                    if (luseWasUsing && !isUsing) {
-                        finished = true;
-                    } else if (!luseWasUsing && luseTimeoutTicks > 30) {
-                        finished = true;
-                    }
-
-                    if (finished) {
-                        releaseKeyTranslation(client, "key.use");
-                        luseWasUsing = false;
-                        luseTimeoutTicks = 0;
-
-                        if (luseLoop) {
-                            luseStage = 2;
-                            luseDelayTicks = 0;
-                        } else {
-                            luseCount--;
-                            if (luseCount <= 0) {
-                                luseStage = -1;
-                                CommandDispatcher.addFeedback("§a模拟长按使用完成");
-                            } else {
+                            if (luseLoop) {
                                 luseStage = 2;
                                 luseDelayTicks = 0;
+                            } else {
+                                luseCount--;
+                                if (luseCount <= 0) {
+                                    luseStage = -1;
+                                    CommandDispatcher.addFeedback("§a模拟长按使用完成");
+                                } else {
+                                    luseStage = 2;
+                                    luseDelayTicks = 0;
+                                }
+                            }
+                        } else {
+                            // 还没有成功进入“使用”状态
+                            luseTimeoutTicks++;
+                            if (luseTimeoutTicks > 60) {
+                                releaseKeyTranslation(client, "key.use");
+                                luseTimeoutTicks = 0;
+                                if (luseLoop) {
+                                    luseStage = 2;
+                                    luseDelayTicks = 0;
+                                } else {
+                                    luseCount--;
+                                    if (luseCount <= 0) {
+                                        luseStage = -1;
+                                        CommandDispatcher.addFeedback("§a模拟长按使用完成");
+                                    } else {
+                                        luseStage = 2;
+                                        luseDelayTicks = 0;
+                                    }
+                                }
                             }
                         }
                     }
