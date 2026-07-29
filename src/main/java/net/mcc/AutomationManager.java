@@ -391,7 +391,6 @@ public class AutomationManager {
                     luseWasUsing = false;
                     luseTimeoutTicks = 0;
                 } else if (luseStage == 1) {
-                    pressKeyTranslation(client, "key.use");
                     boolean isUsing = false;
                     try {
                         isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
@@ -399,33 +398,51 @@ public class AutomationManager {
 
                     if (isUsing) {
                         luseWasUsing = true;
-                    }
+                        pressKeyTranslation(client, "key.use");
+                    } else {
+                        if (luseWasUsing) {
+                            // 曾经在使用，现在不使用了 -> 正常完成
+                            releaseKeyTranslation(client, "key.use");
+                            luseWasUsing = false;
+                            luseTimeoutTicks = 0;
 
-                    luseTimeoutTicks++;
-
-                    boolean finished = false;
-                    if (luseWasUsing && !isUsing) {
-                        finished = true;
-                    } else if (!luseWasUsing && luseTimeoutTicks > 30) {
-                        finished = true;
-                    }
-
-                    if (finished) {
-                        releaseKeyTranslation(client, "key.use");
-                        luseWasUsing = false;
-                        luseTimeoutTicks = 0;
-
-                        if (luseLoop) {
-                            luseStage = 2;
-                            luseDelayTicks = 0;
-                        } else {
-                            luseCount--;
-                            if (luseCount <= 0) {
-                                luseStage = -1;
-                                CommandDispatcher.addFeedback("§a模拟长按使用完成");
-                            } else {
+                            if (luseLoop) {
                                 luseStage = 2;
                                 luseDelayTicks = 0;
+                            } else {
+                                luseCount--;
+                                if (luseCount <= 0) {
+                                    luseStage = -1;
+                                    CommandDispatcher.addFeedback("§a模拟长按使用完成");
+                                } else {
+                                    luseStage = 2;
+                                    luseDelayTicks = 0;
+                                }
+                            }
+                        } else {
+                            // 还没有成功进入“使用”状态，像 use 0 一样持续尝试触发
+                            luseTimeoutTicks++;
+                            if (luseTimeoutTicks > 30) {
+                                // 超过 30 ticks 仍未进入使用状态，可能是非长按物品，直接结束
+                                releaseKeyTranslation(client, "key.use");
+                                luseTimeoutTicks = 0;
+                                if (luseLoop) {
+                                    luseStage = 2;
+                                    luseDelayTicks = 0;
+                                } else {
+                                    luseCount--;
+                                    if (luseCount <= 0) {
+                                        luseStage = -1;
+                                        CommandDispatcher.addFeedback("§a模拟长按使用完成");
+                                    } else {
+                                        luseStage = 2;
+                                        luseDelayTicks = 0;
+                                    }
+                                }
+                            } else {
+                                resetUseCooldown(client);
+                                pressKeyTranslation(client, "key.use");
+                                triggerItemUse(client, player);
                             }
                         }
                     }
