@@ -468,12 +468,6 @@ public class AutomationManager {
                                         luseDelayTicks = 0;
                                     }
                                 }
-                            } else {
-                                resetUseCooldown(client);
-                                pressKeyTranslation(client, "key.use");
-                                try {
-                                    MappingHelper.invokeMethod(client, "doItemUse");
-                                } catch (Exception ignored) {}
                             }
                         }
                     }
