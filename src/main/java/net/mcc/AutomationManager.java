@@ -192,7 +192,18 @@ public class AutomationManager {
     }
 
     public static void showStatus() {
+        boolean useKeyPressed = false;
+        try {
+            Object client = CommandDispatcher.getClient();
+            Object kb = findKeyBinding(client, "key.use");
+            if (kb != null) {
+                useKeyPressed = (boolean) MappingHelper.getFieldValue(kb, "pressed", null);
+            }
+        } catch (Exception ignored) {}
+
         CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Rsp:%b", attackFreq, useFreq, autoRespawn));
+        CommandDispatcher.addFeedback(String.format("§b[Luse] Stage:%d Count:%d Loop:%b WasUsing:%b KeyPressed:%b",
+            luseStage, luseCount, luseLoop, luseWasUsing, useKeyPressed));
     }
 
     public static void probeMappings() {
@@ -401,6 +412,9 @@ public class AutomationManager {
                     resetUseCooldown(client);
                     pressKeyTranslation(client, "key.use");
                     incrementKeyCounter(client, "key.use");
+                    try {
+                        MappingHelper.invokeMethod(client, "doItemUse");
+                    } catch (Exception ignored) {}
 
                     luseStage = 1;
                     luseWasUsing = false;
@@ -436,7 +450,7 @@ public class AutomationManager {
                                 }
                             }
                         } else {
-                            // 还没有成功进入“使用”状态
+                            // 还没有成功进入“使用”状态，像 use 0 一样持续尝试触发
                             luseTimeoutTicks++;
                             if (luseTimeoutTicks > 60) {
                                 releaseKeyTranslation(client, "key.use");
@@ -454,6 +468,12 @@ public class AutomationManager {
                                         luseDelayTicks = 0;
                                     }
                                 }
+                            } else {
+                                resetUseCooldown(client);
+                                pressKeyTranslation(client, "key.use");
+                                try {
+                                    MappingHelper.invokeMethod(client, "doItemUse");
+                                } catch (Exception ignored) {}
                             }
                         }
                     }
