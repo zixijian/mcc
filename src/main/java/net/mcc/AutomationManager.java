@@ -385,14 +385,7 @@ public class AutomationManager {
                     resetUseCooldown(client);
                     pressKeyTranslation(client, "key.use");
                     incrementKeyCounter(client, "key.use");
-
-                    try {
-                        Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                        Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-                        if (im != null && mainHand != null) {
-                            MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                        }
-                    } catch (Exception ignored) {}
+                    triggerItemUse(client, player);
 
                     luseStage = 1;
                     luseWasUsing = false;
