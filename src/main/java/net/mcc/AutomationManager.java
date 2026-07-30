@@ -17,6 +17,39 @@ public class AutomationManager {
     private static Float lockedPitch = null;
     private static Float lockedYaw = null;
 
+    private static int luseCount = -2; // -2 for inactive, -1 for infinite (0), >= 1 for positive counts
+    private static int luseStage = 0;
+    private static int luseDelayTicks = 0;
+    private static int luseActiveTicks = 0;
+    private static boolean luseStarted = false;
+
+    public static void setLuse(int count) {
+        luseCount = count;
+        luseStage = 0;
+        luseDelayTicks = 0;
+        luseActiveTicks = 0;
+        luseStarted = false;
+        if (count != -2) {
+            useFreq = -1;
+            attackFreq = -1;
+            try {
+                Object client = CommandDispatcher.getClient();
+                releaseKeyTranslation(client, "key.attack");
+            } catch (Exception ignored) {}
+            if (count == -1) {
+                CommandDispatcher.addFeedback("§a启动持续长按使用");
+            } else {
+                CommandDispatcher.addFeedback("§a启动长按使用: " + count + " 次");
+            }
+        } else {
+            try {
+                Object client = CommandDispatcher.getClient();
+                releaseKeyTranslation(client, "key.use");
+            } catch (Exception ignored) {}
+            CommandDispatcher.addFeedback("§e已停止长按使用");
+        }
+    }
+
     public static void setAttack(int freq, boolean hasArgs) {
         if (!hasArgs) {
             attackOnce = true;
@@ -104,6 +137,11 @@ public class AutomationManager {
         attackFreq = -1; useFreq = -1;
         attackOnce = useOnce = false;
         lockedPitch = lockedYaw = null;
+        luseCount = -2;
+        luseStage = 0;
+        luseDelayTicks = 0;
+        luseActiveTicks = 0;
+        luseStarted = false;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -113,7 +151,8 @@ public class AutomationManager {
     }
 
     public static void showStatus() {
-        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Rsp:%b", attackFreq, useFreq, autoRespawn));
+        String luseStr = luseCount == -2 ? "关闭" : (luseCount == -1 ? "持续" : luseCount + " 次");
+        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b", attackFreq, useFreq, luseStr, autoRespawn));
     }
 
     public static void probeMappings() {
@@ -275,6 +314,78 @@ public class AutomationManager {
                     incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
                     useTimer = useFreq;
+                }
+            }
+
+            // 4. Luse (长按使用) 逻辑
+            if (luseCount != -2) {
+                // 如果当前屏幕不是 null，用户指令是不中断该状态（只有 stop 停止），
+                // 但如果打开了 GUI，我们不能让它由于在 GUI 中乱发包或者按键锁定而导致问题。
+                // 按照 memory 中的模式，我们可以：
+                // 如果当前有 GUI，为了安全可能需要暂时在 Tick 中不执行状态机动作，但保留其状态，
+                // 或者说，如果 screen 存在，我们不更新状态机。不过上面的代码一开头就有：
+                // if (currentScreen != null) return;
+                // 这意味着如果 currentScreen != null，整个 onClientTick 早就 return 了。
+                // 这说明只要在 GUI 中，onClientTick 就不会走。这也符合“状态保留，只有 stop 能彻底停止”的要求，
+                // 因为一旦关闭 GUI 回到游戏，onClientTick 会继续，状态机可以继续跑！
+
+                boolean isUsing = false;
+                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+
+                switch (luseStage) {
+                    case 0: // Stage 0: Initiation (启动/触发阶段)
+                        resetUseCooldown(client);
+                        pressKeyTranslation(client, "key.use");
+                        incrementKeyCounter(client, "key.use");
+
+                        // 为了避免双重手swing或打断动画，只在第一 tick 尝试一次 interactItem
+                        Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                        Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+                        if (im != null && mainHand != null) {
+                            try {
+                                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                            } catch (Exception ignored) {}
+                        }
+
+                        luseStage = 1;
+                        luseActiveTicks = 0;
+                        luseStarted = false;
+                        break;
+
+                    case 1: // Stage 1: Holding (持续按住阶段)
+                        pressKeyTranslation(client, "key.use");
+                        luseActiveTicks++;
+
+                        if (isUsing) {
+                            luseStarted = true;
+                        }
+
+                        // 判定单次使用动作完成或中断的条件：
+                        // 如果开始使用过（luseStarted = true）且当前不再使用（!isUsing），或者长按超过了一定安全时长（如 100 ticks）
+                        if ((luseStarted && !isUsing) || luseActiveTicks > 100) {
+                            releaseKeyTranslation(client, "key.use");
+                            luseStage = 2;
+                            luseDelayTicks = 0;
+
+                            if (luseCount > 0) {
+                                luseCount--;
+                            }
+                            if (luseCount == 0) {
+                                // 所有次数执行完毕，停止
+                                luseCount = -2;
+                                CommandDispatcher.addFeedback("§a已完成所有长按使用");
+                            }
+                        }
+                        break;
+
+                    case 2: // Stage 2: Delay (延迟/缓冲阶段)
+                        luseDelayTicks++;
+                        if (luseDelayTicks >= 8) {
+                            if (luseCount != -2) {
+                                luseStage = 0;
+                            }
+                        }
+                        break;
                 }
             }
         } catch (Throwable ignored) {}
