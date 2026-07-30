@@ -624,7 +624,7 @@ public class AutomationManager {
         Object kb = findKeyBinding(client, translationKey);
         if (kb != null) {
             MappingHelper.setFieldValue(kb, "pressed", false);
-            try { MappingHelper.setFieldValue(kb, "field_1652", 0); } catch (Exception ignored) {}
+            try { MappingHelper.setFieldValue(kb, "timesPressed", 0); } catch (Exception ignored) {}
             try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
         }
     }
@@ -633,14 +633,36 @@ public class AutomationManager {
         try {
             Object kb = findKeyBinding(client, translationKey);
             if (kb != null) {
-                int count = ((Number) MappingHelper.getFieldValue(kb, "field_1652", null)).intValue();
-                MappingHelper.setFieldValue(kb, "field_1652", count + 1);
+                int count = ((Number) MappingHelper.getFieldValue(kb, "timesPressed", null)).intValue();
+                MappingHelper.setFieldValue(kb, "timesPressed", count + 1);
             }
         } catch (Exception ignored) {}
     }
 
     private static Object findKeyBinding(Object client, String translationKey) throws Exception {
         Object options = MappingHelper.getFieldValue(client, "options", null);
+        if (options != null) {
+            if ("key.use".equals(translationKey)) {
+                try {
+                    Object kb = MappingHelper.getFieldValue(options, "useKey", null);
+                    if (kb != null) return kb;
+                } catch (Exception ignored) {}
+                try {
+                    Object kb = MappingHelper.getFieldValue(options, "field_1886", null);
+                    if (kb != null) return kb;
+                } catch (Exception ignored) {}
+            }
+            if ("key.attack".equals(translationKey)) {
+                try {
+                    Object kb = MappingHelper.getFieldValue(options, "attackKey", null);
+                    if (kb != null) return kb;
+                } catch (Exception ignored) {}
+                try {
+                    Object kb = MappingHelper.getFieldValue(options, "field_1904", null);
+                    if (kb != null) return kb;
+                } catch (Exception ignored) {}
+            }
+        }
         Class<?> kbClass = MappingHelper.getClass("KeyBinding");
         Class<?> curr = options.getClass();
         while (curr != null && curr != Object.class) {
