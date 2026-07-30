@@ -22,6 +22,7 @@ public class AutomationManager {
     private static int luseDelayTicks = 0;
     private static int luseActiveTicks = 0;
     private static boolean luseStarted = false;
+    private static long lastProcessedGameTime = -1;
 
     public static void setLuse(int count) {
         luseCount = count;
@@ -219,6 +220,22 @@ public class AutomationManager {
             Object client = CommandDispatcher.getClient();
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
+
+            // 检查 gameTime 避免同一 tick 被多个 Mixin 注入点重复调用
+            Object world = CommandDispatcher.getClientWorld();
+            if (world != null) {
+                long gameTime = -1;
+                try {
+                    Object res = MappingHelper.invokeMethod(world, "getTime");
+                    if (res instanceof Number) gameTime = ((Number) res).longValue();
+                } catch (Exception ignored) {}
+                if (gameTime != -1) {
+                    if (gameTime == lastProcessedGameTime) {
+                        return; // 同一个 tick 已经执行过
+                    }
+                    lastProcessedGameTime = gameTime;
+                }
+            }
 
             // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
             Object currentScreen = null;
@@ -641,29 +658,10 @@ public class AutomationManager {
 
     private static Object findKeyBinding(Object client, String translationKey) throws Exception {
         Object options = MappingHelper.getFieldValue(client, "options", null);
-        if (options != null) {
-            if ("key.use".equals(translationKey)) {
-                try {
-                    Object kb = MappingHelper.getFieldValue(options, "useKey", null);
-                    if (kb != null) return kb;
-                } catch (Exception ignored) {}
-                try {
-                    Object kb = MappingHelper.getFieldValue(options, "field_1886", null);
-                    if (kb != null) return kb;
-                } catch (Exception ignored) {}
-            }
-            if ("key.attack".equals(translationKey)) {
-                try {
-                    Object kb = MappingHelper.getFieldValue(options, "attackKey", null);
-                    if (kb != null) return kb;
-                } catch (Exception ignored) {}
-                try {
-                    Object kb = MappingHelper.getFieldValue(options, "field_1904", null);
-                    if (kb != null) return kb;
-                } catch (Exception ignored) {}
-            }
-        }
+        if (options == null) return null;
         Class<?> kbClass = MappingHelper.getClass("KeyBinding");
+
+        // 动态扫描 Options 中的所有 KeyBinding 字段进行精确匹配，100% 免疫任何版本和混淆问题
         Class<?> curr = options.getClass();
         while (curr != null && curr != Object.class) {
             for (java.lang.reflect.Field f : curr.getDeclaredFields()) {
@@ -672,14 +670,39 @@ public class AutomationManager {
                         f.setAccessible(true);
                         Object kb = f.get(options);
                         if (kb != null) {
-                            String tk = (String) MappingHelper.getFieldValue(kb, "translationKey", kbClass);
-                            if (translationKey.equals(tk)) return kb;
+                            String tk = null;
+                            try {
+                                tk = (String) MappingHelper.getFieldValue(kb, "translationKey", kbClass);
+                            } catch (Exception ignored) {}
+                            if (tk == null) {
+                                try {
+                                    tk = (String) MappingHelper.getFieldValue(kb, "field_1660", kbClass);
+                                } catch (Exception ignored) {}
+                            }
+                            if (tk == null) {
+                                // 深度兜底：通过反射读取 KeyBinding 中唯一的 String 类型的字段（即 translationKey）
+                                for (java.lang.reflect.Field kf : kb.getClass().getDeclaredFields()) {
+                                    if (kf.getType() == String.class) {
+                                        kf.setAccessible(true);
+                                        String val = (String) kf.get(kb);
+                                        if (val != null && val.startsWith("key.")) {
+                                            tk = val;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (translationKey.equals(tk)) {
+                                return kb;
+                            }
                         }
                     } catch (Exception ignored) {}
                 }
             }
             curr = curr.getSuperclass();
         }
+
+        // 兜底从 static keysById Map 查找
         try {
             java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "keysById", kbClass);
             if (allKbs != null) {
@@ -687,6 +710,14 @@ public class AutomationManager {
                 if (kb != null) return kb;
             }
         } catch (Exception ignored) {}
+        try {
+            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "field_1657", kbClass);
+            if (allKbs != null) {
+                Object kb = allKbs.get(translationKey);
+                if (kb != null) return kb;
+            }
+        } catch (Exception ignored) {}
+
         return null;
     }
 }
