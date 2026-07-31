@@ -199,7 +199,7 @@ public class MappingHelper {
         MAPPINGS.put("getBlockPos", "method_17777");
         MAPPINGS.put("getSide", "method_17778");
         MAPPINGS.put("stopUsingItem", "method_2907");
-        MAPPINGS.put("isUsingItem", is1214 ? "method_5971" : "method_6115");
+        MAPPINGS.put("isUsingItem", "method_6115");
         MAPPINGS.put("getYaw", "method_36454");
         MAPPINGS.put("getPitch", "method_36455");
         MAPPINGS.put("setYaw", "method_36456");

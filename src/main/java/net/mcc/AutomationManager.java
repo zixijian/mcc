@@ -221,22 +221,6 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 检查 gameTime 避免同一 tick 被多个 Mixin 注入点重复调用
-            Object world = CommandDispatcher.getClientWorld();
-            if (world != null) {
-                long gameTime = -1;
-                try {
-                    Object res = MappingHelper.invokeMethod(world, "getTime");
-                    if (res instanceof Number) gameTime = ((Number) res).longValue();
-                } catch (Exception ignored) {}
-                if (gameTime != -1) {
-                    if (gameTime == lastProcessedGameTime) {
-                        return; // 同一个 tick 已经执行过
-                    }
-                    lastProcessedGameTime = gameTime;
-                }
-            }
-
             // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
             Object currentScreen = null;
             try {
