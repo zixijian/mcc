@@ -170,9 +170,8 @@ public class MappingHelper {
         MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
         MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
         MAPPINGS.put("fishHook", is1214 ? "field_54930" : "field_7500");
-        MAPPINGS.put("keysById", "field_1657"); // KeyBinding.keysById
-        MAPPINGS.put("translationKey", "field_1660"); // KeyBinding.translationKey
-        MAPPINGS.put("timesPressed", "field_1661"); // KeyBinding.timesPressed
+        MAPPINGS.put("keysById", "field_1655"); // KeyBinding.keysById
+        MAPPINGS.put("translationKey", "field_1654"); // KeyBinding.translationKey
         MAPPINGS.put("literal", "method_43471");
         MAPPINGS.put("sendMessage", "method_7353");
         MAPPINGS.put("getPlayerList", "method_2871"); // 获取玩家列表 Collection
