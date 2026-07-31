@@ -345,13 +345,23 @@ public class AutomationManager {
                             if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
                                 Object item = MappingHelper.invokeMethod(stack, "getItem");
                                 if (item != null) {
-                                    String sid = item.toString();
+                                    String sid = item.toString().toLowerCase();
+                                    boolean isTridentClass = false;
+                                    try {
+                                        Class<?> tridentClass = Class.forName("net.minecraft.class_1835");
+                                        if (tridentClass.isInstance(item)) isTridentClass = true;
+                                    } catch (Exception ignored) {}
+                                    try {
+                                        Class<?> tridentClass = Class.forName("net.minecraft.item.TridentItem");
+                                        if (tridentClass.isInstance(item)) isTridentClass = true;
+                                    } catch (Exception ignored) {}
+
                                     if (sid.contains("bow")) {
                                         isBow = true;
-                                        maxHoldTicks = 26; // 弓拉满需要 20 tick，加上 6 tick 延迟缓冲确保 100% 满力
-                                    } else if (sid.contains("trident")) {
+                                        maxHoldTicks = 35; // 弓拉满改到 35 tick
+                                    } else if (sid.contains("trident") || isTridentClass) {
                                         isBow = true;
-                                        maxHoldTicks = 16; // 三叉戟蓄力需要 10 tick，加上 6 tick 缓冲
+                                        maxHoldTicks = 25; // 三叉戟蓄力改到 25 tick
                                     }
                                 }
                             }
