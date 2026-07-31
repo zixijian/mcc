@@ -333,6 +333,32 @@ public class AutomationManager {
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
 
+                int maxHoldTicks = 100;
+                boolean isBow = false;
+                try {
+                    Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                    if (inv != null) {
+                        int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                        Object main = MappingHelper.getFieldValue(inv, "main", null);
+                        if (main instanceof java.util.List) {
+                            Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                            if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
+                                Object item = MappingHelper.invokeMethod(stack, "getItem");
+                                if (item != null) {
+                                    String sid = item.toString();
+                                    if (sid.contains("bow")) {
+                                        isBow = true;
+                                        maxHoldTicks = 20; // 弓拉满需要 20 tick
+                                    } else if (sid.contains("trident")) {
+                                        isBow = true;
+                                        maxHoldTicks = 10; // 三叉戟蓄力需要 10 tick
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+
                 switch (luseStage) {
                     case 0: // Stage 0: Initiation (启动/触发阶段)
                         resetUseCooldown(client);
@@ -363,7 +389,7 @@ public class AutomationManager {
 
                         // 判定单次使用动作完成或中断的条件：
                         // 如果开始使用过（luseStarted = true）且当前不再使用（!isUsing），或者长按超过了一定安全时长（如 100 ticks）
-                        if ((luseStarted && !isUsing) || luseActiveTicks > 100) {
+                        if ((!isBow && luseStarted && !isUsing) || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
                             luseReleaseKey(client, "key.use");
                             luseStage = 2;
                             luseDelayTicks = 0;
