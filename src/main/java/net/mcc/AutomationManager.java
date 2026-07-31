@@ -492,8 +492,8 @@ public class AutomationManager {
             } catch (Exception ignored) {}
 
             if (isFishingRod) {
-                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，配合 useOnce 等逻辑防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
-                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                // 仅调用 doItemUse，跳过额外的 interactItem 补充，防止双重交互导致抛出后立即收回
+                MappingHelper.invokeMethod(client, "doItemUse");
             } else {
                 // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
                 MappingHelper.invokeMethod(client, "doItemUse");
