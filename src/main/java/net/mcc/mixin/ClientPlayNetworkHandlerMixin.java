@@ -138,14 +138,30 @@ public class ClientPlayNetworkHandlerMixin {
             Method literalMethod = literalBuilderClass.getMethod("literal", String.class);
             Method argumentMethod = requiredBuilderClass.getMethod("argument", String.class, Class.forName("com.mojang.brigadier.arguments.ArgumentType"));
             Method greedyMethod = stringArgClass.getMethod("greedyString");
-            Method thenMethod = literalBuilderClass.getMethod("then", argumentBuilderClass);
-            Method buildMethod = literalBuilderClass.getMethod("build");
+            Method thenMethod = argumentBuilderClass.getMethod("then", argumentBuilderClass);
+            Method buildMethod = argumentBuilderClass.getMethod("build");
 
             Object mccBuilder = literalMethod.invoke(null, "mcc");
             Object greedyType = greedyMethod.invoke(null);
-            Object argBuilder = argumentMethod.invoke(null, "args", greedyType);
 
-            thenMethod.invoke(mccBuilder, argBuilder);
+            // 注册所有子命令支持自动补全和输入合法性
+            String[] subcommands = {
+                "time", "hp", "xp", "tune", "tps", "list", "choose", "cs",
+                "slot", "tools", "drop", "attack", "atk", "use", "luse",
+                "respawn", "look", "status", "stop", "debug", "mapping"
+            };
+
+            for (String sub : subcommands) {
+                Object subBuilder = literalMethod.invoke(null, sub);
+                Object subArgBuilder = argumentMethod.invoke(null, "args", greedyType);
+                thenMethod.invoke(subBuilder, subArgBuilder);
+                thenMethod.invoke(mccBuilder, subBuilder);
+            }
+
+            // 添加直接挂在/mcc下的贪婪兜底，确保 /mcc 后面带任意未知参数时也保持合法性
+            Object fallbackArgBuilder = argumentMethod.invoke(null, "args", greedyType);
+            thenMethod.invoke(mccBuilder, fallbackArgBuilder);
+
             Object mccNode = buildMethod.invoke(mccBuilder);
 
             Object root = MappingHelper.invokeMethod(dispatcher, "getRoot");
