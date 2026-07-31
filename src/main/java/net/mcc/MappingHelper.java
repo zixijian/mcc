@@ -204,7 +204,7 @@ public class MappingHelper {
         MAPPINGS.put("setYaw", "method_36456");
         MAPPINGS.put("setPitch", "method_36457");
         MAPPINGS.put("getId", "method_10221");
-        MAPPINGS.put("getCommandDispatcher", "method_2903");
+        MAPPINGS.put("getCommandDispatcher", "method_2886");
         MAPPINGS.put("getRoot", "method_8257");
         MAPPINGS.put("addChild", "method_8254");
         MAPPINGS.put("setPressed", "method_1436");

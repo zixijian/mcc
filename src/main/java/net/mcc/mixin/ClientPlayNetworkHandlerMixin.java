@@ -123,10 +123,15 @@ public class ClientPlayNetworkHandlerMixin {
             try {
                 dispatcher = MappingHelper.invokeMethod(handler, "getCommandDispatcher");
             } catch (Exception e) {
-                // 1.21.4+ fallback: field_3691
+                // 1.21.1 fallback: field_3696
                 try {
-                    dispatcher = MappingHelper.getFieldValue(handler, "field_3691", null);
-                } catch (Exception ignored) {}
+                    dispatcher = MappingHelper.getFieldValue(handler, "field_3696", null);
+                } catch (Exception ignored1) {
+                    // 1.21.4+ fallback: field_3691
+                    try {
+                        dispatcher = MappingHelper.getFieldValue(handler, "field_3691", null);
+                    } catch (Exception ignored2) {}
+                }
             }
             if (dispatcher == null) return;
 

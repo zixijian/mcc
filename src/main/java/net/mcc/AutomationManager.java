@@ -112,11 +112,13 @@ public class AutomationManager {
                     singleRespawnTriggered = true;
                     CommandDispatcher.addFeedback("§a已触发单次复活");
                     return;
+                } else {
+                    CommandDispatcher.addFeedback("§e玩家当前处于存活状态，无需复活");
+                    return;
                 }
             }
         } catch (Exception ignored) {}
-        autoRespawn = !autoRespawn;
-        CommandDispatcher.addFeedback("§a自动复活: " + (autoRespawn ? "开启" : "关闭"));
+        CommandDispatcher.addFeedback("§c无法获取玩家状态");
     }
 
     public static void setLook(float pitch, float yaw) throws Exception {
@@ -233,11 +235,11 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 1. 自动复活 (无视屏幕/GUI打开状态，优先处理)
+            // 1. 自动复活 (无视屏幕/GUI打开状态，优先处理，仅单次触发)
             try {
                 float hp = ((Number) MappingHelper.invokeMethod(player, "getHealth")).floatValue();
                 if (hp <= 0) {
-                    if (autoRespawn || singleRespawnTriggered) {
+                    if (singleRespawnTriggered) {
                         MappingHelper.invokeMethod(player, "requestRespawn");
                         singleRespawnTriggered = false;
                     }
