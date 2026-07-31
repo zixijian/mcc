@@ -103,7 +103,18 @@ public class AutomationManager {
         CommandDispatcher.addFeedback("§a自动使用: " + (freq == -1 ? "关闭" : (freq == 0 ? "持续" : freq + " ticks")));
     }
 
-    public static void toggleAutoRespawn() {
+    public static void handleRespawnCommand(String arg) {
+        if ("on".equals(arg)) {
+            autoRespawn = true;
+            CommandDispatcher.addFeedback("§a自动复活: 开启");
+            return;
+        } else if ("off".equals(arg)) {
+            autoRespawn = false;
+            CommandDispatcher.addFeedback("§a自动复活: 关闭");
+            return;
+        }
+
+        // 不带参数（或未知参数）则执行单次复活
         try {
             Object player = CommandDispatcher.getClientPlayer();
             if (player != null) {
@@ -235,11 +246,11 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
-            // 1. 自动复活 (无视屏幕/GUI打开状态，优先处理，仅单次触发)
+            // 1. 自动复活 (无视屏幕/GUI打开状态，优先处理)
             try {
                 float hp = ((Number) MappingHelper.invokeMethod(player, "getHealth")).floatValue();
                 if (hp <= 0) {
-                    if (singleRespawnTriggered) {
+                    if (autoRespawn || singleRespawnTriggered) {
                         MappingHelper.invokeMethod(player, "requestRespawn");
                         singleRespawnTriggered = false;
                     }

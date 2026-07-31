@@ -158,6 +158,13 @@ public class ClientPlayNetworkHandlerMixin {
 
             for (String sub : subcommands) {
                 Object subBuilder = literalMethod.invoke(null, sub);
+                if ("respawn".equals(sub)) {
+                    // 为 respawn 专门添加 "on" 和 "off" 的自动补全子项
+                    Object onBuilder = literalMethod.invoke(null, "on");
+                    Object offBuilder = literalMethod.invoke(null, "off");
+                    thenMethod.invoke(subBuilder, onBuilder);
+                    thenMethod.invoke(subBuilder, offBuilder);
+                }
                 Object subArgBuilder = argumentMethod.invoke(null, "args", greedyType);
                 thenMethod.invoke(subBuilder, subArgBuilder);
                 thenMethod.invoke(mccBuilder, subBuilder);
