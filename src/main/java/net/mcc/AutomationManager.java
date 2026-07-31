@@ -348,10 +348,10 @@ public class AutomationManager {
                                     String sid = item.toString();
                                     if (sid.contains("bow")) {
                                         isBow = true;
-                                        maxHoldTicks = 23; // 弓拉满需要 20 tick，加上 3 tick 延迟缓冲确保 100% 满力
+                                        maxHoldTicks = 26; // 弓拉满需要 20 tick，加上 6 tick 延迟缓冲确保 100% 满力
                                     } else if (sid.contains("trident")) {
                                         isBow = true;
-                                        maxHoldTicks = 13; // 三叉戟蓄力需要 10 tick，加上 3 tick 缓冲
+                                        maxHoldTicks = 16; // 三叉戟蓄力需要 10 tick，加上 6 tick 缓冲
                                     }
                                 }
                             }
