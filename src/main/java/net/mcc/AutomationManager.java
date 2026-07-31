@@ -10,6 +10,7 @@ public class AutomationManager {
     private static boolean attackOnce = false;
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
+    private static boolean singleRespawnTriggered = false;
 
     private static int internalAttackTicks = 0;
     private static int waitTicksAfterHalfCharge = -1;
@@ -102,9 +103,33 @@ public class AutomationManager {
         CommandDispatcher.addFeedback("§a自动使用: " + (freq == -1 ? "关闭" : (freq == 0 ? "持续" : freq + " ticks")));
     }
 
-    public static void toggleAutoRespawn() {
-        autoRespawn = !autoRespawn;
-        CommandDispatcher.addFeedback("§a自动复活: " + (autoRespawn ? "开启" : "关闭"));
+    public static void handleRespawnCommand(String arg) {
+        if ("on".equals(arg)) {
+            autoRespawn = true;
+            CommandDispatcher.addFeedback("§a自动复活: 开启");
+            return;
+        } else if ("off".equals(arg)) {
+            autoRespawn = false;
+            CommandDispatcher.addFeedback("§a自动复活: 关闭");
+            return;
+        }
+
+        // 不带参数（或未知参数）则执行单次复活
+        try {
+            Object player = CommandDispatcher.getClientPlayer();
+            if (player != null) {
+                float hp = ((Number) MappingHelper.invokeMethod(player, "getHealth")).floatValue();
+                if (hp <= 0) {
+                    singleRespawnTriggered = true;
+                    CommandDispatcher.addFeedback("§a已触发单次复活");
+                    return;
+                } else {
+                    CommandDispatcher.addFeedback("§e玩家当前处于存活状态，无需复活");
+                    return;
+                }
+            }
+        } catch (Exception ignored) {}
+        CommandDispatcher.addFeedback("§c无法获取玩家状态");
     }
 
     public static void setLook(float pitch, float yaw) throws Exception {
@@ -221,6 +246,19 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
+            // 1. 自动复活 (无视屏幕/GUI打开状态，优先处理)
+            try {
+                float hp = ((Number) MappingHelper.invokeMethod(player, "getHealth")).floatValue();
+                if (hp <= 0) {
+                    if (autoRespawn || singleRespawnTriggered) {
+                        MappingHelper.invokeMethod(player, "requestRespawn");
+                        singleRespawnTriggered = false;
+                    }
+                } else {
+                    singleRespawnTriggered = false; // 活着的时候重置，防止意外
+                }
+            } catch (Exception ignored) {}
+
             // 健壮的当前屏幕检测：基于类型查找，防止 Intermediary 偏移导致误判
             Object currentScreen = null;
             try {
@@ -238,12 +276,6 @@ public class AutomationManager {
                     try { MappingHelper.setFieldValue(player, "field_6031", lockedYaw); } catch (Exception ignored) {}
                     try { MappingHelper.setFieldValue(player, "field_6004", lockedPitch); } catch (Exception ignored) {}
                 } catch (Exception ignored) {}
-            }
-
-            // 1. 自动复活
-            if (autoRespawn) {
-                float hp = ((Number) MappingHelper.invokeMethod(player, "getHealth")).floatValue();
-                if (hp <= 0) MappingHelper.invokeMethod(player, "requestRespawn");
             }
 
             // 2. 攻击逻辑
