@@ -348,10 +348,10 @@ public class AutomationManager {
                                     String sid = item.toString();
                                     if (sid.contains("bow")) {
                                         isBow = true;
-                                        maxHoldTicks = 30; // 弓拉满需要 20 tick，加上 10 tick 延迟缓冲确保 100% 满力
+                                        maxHoldTicks = 26; // 弓拉满需要 20 tick，加上 6 tick 延迟缓冲确保 100% 满力
                                     } else if (sid.contains("trident")) {
                                         isBow = true;
-                                        maxHoldTicks = 20; // 三叉戟蓄力需要 10 tick，加上 10 tick 缓冲
+                                        maxHoldTicks = 16; // 三叉戟蓄力需要 10 tick，加上 6 tick 缓冲
                                     }
                                 }
                             }
@@ -710,6 +710,20 @@ public class AutomationManager {
             MappingHelper.setFieldValue(kb, "pressed", false);
             try { MappingHelper.setFieldValue(kb, "field_1661", 0); } catch (Exception ignored) {}
             try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
+        }
+
+        // 显式调用 stopUsingItem 确保弓箭、三叉戟在按键释放时绝对、即时触发释放攻击/抛出
+        Object player = CommandDispatcher.getClientPlayer();
+        if (player != null) {
+            boolean isUsing = false;
+            try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+            if (isUsing) {
+                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                if (im != null) {
+                    try { MappingHelper.invokeMethod(im, "stopUsingItem", player); } catch (Exception ignored) {}
+                    try { MappingHelper.invokeMethod(im, "method_2907", player); } catch (Exception ignored) {}
+                }
+            }
         }
     }
 
