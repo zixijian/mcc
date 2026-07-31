@@ -348,10 +348,10 @@ public class AutomationManager {
                                     String sid = item.toString();
                                     if (sid.contains("bow")) {
                                         isBow = true;
-                                        maxHoldTicks = 20; // 弓拉满需要 20 tick
+                                        maxHoldTicks = 23; // 弓拉满需要 20 tick，加上 3 tick 延迟缓冲确保 100% 满力
                                     } else if (sid.contains("trident")) {
                                         isBow = true;
-                                        maxHoldTicks = 10; // 三叉戟蓄力需要 10 tick
+                                        maxHoldTicks = 13; // 三叉戟蓄力需要 10 tick，加上 3 tick 缓冲
                                     }
                                 }
                             }
@@ -380,6 +380,7 @@ public class AutomationManager {
                         break;
 
                     case 1: // Stage 1: Holding (持续按住阶段)
+                        resetUseCooldown(client); // 持续重置右键冷却，确保第二次拉弓能立即启动不被 4 ticks 延迟导致少蓄力
                         lusePressKey(client, "key.use");
                         luseActiveTicks++;
 
