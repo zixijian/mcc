@@ -336,8 +336,8 @@ public class AutomationManager {
                 switch (luseStage) {
                     case 0: // Stage 0: Initiation (启动/触发阶段)
                         resetUseCooldown(client);
-                        pressKeyTranslation(client, "key.use");
-                        incrementKeyCounter(client, "key.use");
+                        lusePressKey(client, "key.use");
+                        luseIncrementKeyCounter(client, "key.use");
 
                         // 为了避免双重手swing或打断动画，只在第一 tick 尝试一次 interactItem
                         Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
@@ -354,7 +354,7 @@ public class AutomationManager {
                         break;
 
                     case 1: // Stage 1: Holding (持续按住阶段)
-                        pressKeyTranslation(client, "key.use");
+                        lusePressKey(client, "key.use");
                         luseActiveTicks++;
 
                         if (isUsing) {
@@ -364,7 +364,7 @@ public class AutomationManager {
                         // 判定单次使用动作完成或中断的条件：
                         // 如果开始使用过（luseStarted = true）且当前不再使用（!isUsing），或者长按超过了一定安全时长（如 100 ticks）
                         if ((luseStarted && !isUsing) || luseActiveTicks > 100) {
-                            releaseKeyTranslation(client, "key.use");
+                            luseReleaseKey(client, "key.use");
                             luseStage = 2;
                             luseDelayTicks = 0;
 
