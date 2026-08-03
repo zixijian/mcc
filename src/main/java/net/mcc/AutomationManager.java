@@ -11,6 +11,7 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
     private static boolean singleRespawnTriggered = false;
+    private static boolean buffEnabled = false;
 
     private static int internalAttackTicks = 0;
     private static int waitTicksAfterHalfCharge = -1;
@@ -132,6 +133,15 @@ public class AutomationManager {
         CommandDispatcher.addFeedback("§c无法获取玩家状态");
     }
 
+    public static boolean isBuffEnabled() {
+        return buffEnabled;
+    }
+
+    public static void setBuff(boolean enabled) {
+        buffEnabled = enabled;
+        CommandDispatcher.addFeedback(enabled ? "§a[MCC] 强化Buff：开启" : "§e[MCC] 强化Buff：关闭");
+    }
+
     public static void setLook(float pitch, float yaw) throws Exception {
         lockedPitch = pitch;
         lockedYaw = yaw;
@@ -178,7 +188,7 @@ public class AutomationManager {
 
     public static void showStatus() {
         String luseStr = luseCount == -2 ? "关闭" : (luseCount == -1 ? "持续" : luseCount + " 次");
-        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b", attackFreq, useFreq, luseStr, autoRespawn));
+        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b Buff:%b", attackFreq, useFreq, luseStr, autoRespawn, buffEnabled));
     }
 
     public static void probeMappings() {

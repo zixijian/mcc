@@ -153,13 +153,13 @@ public class ClientPlayNetworkHandlerMixin {
             String[] subcommands = {
                 "time", "hp", "xp", "tune", "tps", "list", "choose", "cs",
                 "slot", "tools", "drop", "attack", "atk", "use", "luse",
-                "respawn", "look", "status", "stop", "debug", "mapping"
+                "respawn", "buff", "look", "status", "stop", "debug", "mapping"
             };
 
             for (String sub : subcommands) {
                 Object subBuilder = literalMethod.invoke(null, sub);
-                if ("respawn".equals(sub)) {
-                    // 为 respawn 专门添加 "on" 和 "off" 的自动补全子项
+                if ("respawn".equals(sub) || "buff".equals(sub)) {
+                    // 为 respawn 和 buff 专门添加 "on" 和 "off" 的自动补全子项
                     Object onBuilder = literalMethod.invoke(null, "on");
                     Object offBuilder = literalMethod.invoke(null, "off");
                     thenMethod.invoke(subBuilder, onBuilder);
