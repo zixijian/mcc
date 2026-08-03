@@ -2,24 +2,24 @@ package net.mcc.mixin;
 
 import net.mcc.AutomationManager;
 import net.mcc.MappingHelper;
+import net.minecraft.block.BlockState;
+import net.minecraft.entity.player.PlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(targets = "net.minecraft.class_1657") // PlayerEntity
+@Mixin(PlayerEntity.class)
 public class PlayerEntityMixin {
 
-    @Inject(method = "method_7351(Lnet/minecraft/class_2680;)F", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
-    private void onGetBlockBreakingSpeed(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
+    @Inject(method = "getBlockBreakingSpeed", at = @At("HEAD"), cancellable = true, remap = true)
+    private void onGetBlockBreakingSpeed(BlockState blockState, CallbackInfoReturnable<Float> cir) {
         if (AutomationManager.isBuffEnabled()) {
             try {
-                // Get player inventory: PlayerEntity.getInventory() -> method_31548()
-                Object inventory = MappingHelper.invokeMethod(this, "method_31548");
+                // Use reflection via MappingHelper for absolute robustness and Zero-Link safety
+                Object inventory = MappingHelper.invokeMethod(this, "method_31548"); // getInventory()
                 if (inventory != null) {
-                    // Get base breaking speed from PlayerInventory: method_7370(BlockState)
-                    float speed = ((Number) MappingHelper.invokeMethod(inventory, "method_7370", blockState)).floatValue();
+                    float speed = ((Number) MappingHelper.invokeMethod(inventory, "method_7370", blockState)).floatValue(); // getBlockBreakingSpeed(BlockState)
                     if (speed > 1.0f) {
                         // 恒定效率 X (Efficiency 10): level * level + 1 = 101.0f
                         speed += 101.0f;
