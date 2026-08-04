@@ -24,6 +24,16 @@ public class AutomationManager {
     private static int luseActiveTicks = 0;
     private static boolean luseStarted = false;
     private static long lastProcessedGameTime = -1;
+    private static int clientTickCount = 0;
+    private static int lastProcessedTickCount = -1;
+
+    public static void incrementClientTick() {
+        clientTickCount++;
+    }
+
+    private static int lastLuseSlot = -1;
+    private static Object lastLuseItem = null;
+    private static int lastLuseCount = -1;
 
     public static void setLuse(int count) {
         luseCount = count;
@@ -31,6 +41,9 @@ public class AutomationManager {
         luseDelayTicks = 0;
         luseActiveTicks = 0;
         luseStarted = false;
+        lastLuseSlot = -1;
+        lastLuseItem = null;
+        lastLuseCount = -1;
         if (count != -2) {
             useFreq = -1;
             attackFreq = -1;
@@ -237,10 +250,74 @@ public class AutomationManager {
         }
     }
 
+    private static class LuseStackInfo {
+        int slot;
+        Object item;
+        int count;
+        boolean isEmpty;
+
+        LuseStackInfo(int slot, Object item, int count, boolean isEmpty) {
+            this.slot = slot;
+            this.item = item;
+            this.count = count;
+            this.isEmpty = isEmpty;
+        }
+    }
+
+    private static LuseStackInfo getLuseStackInfo(Object player) {
+        try {
+            Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+            if (inv != null) {
+                int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                Object main = MappingHelper.getFieldValue(inv, "main", null);
+                if (main instanceof java.util.List) {
+                    Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                    if (stack != null) {
+                        boolean isEmpty = (boolean) MappingHelper.invokeMethod(stack, "isEmpty");
+                        if (isEmpty) {
+                            return new LuseStackInfo(selectedSlot, null, 0, true);
+                        } else {
+                            Object item = MappingHelper.invokeMethod(stack, "getItem");
+                            int count = ((Number) MappingHelper.invokeMethod(stack, "getCount")).intValue();
+                            return new LuseStackInfo(selectedSlot, item, count, false);
+                        }
+                    }
+                }
+                return new LuseStackInfo(selectedSlot, null, 0, true);
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private static boolean isLuseStackChanged(Object player) {
+        if (lastLuseSlot == -1) return true; // No consumable recorded or not a consumable
+        LuseStackInfo current = getLuseStackInfo(player);
+        if (current == null) return true;
+
+        if (current.slot != lastLuseSlot) {
+            return true; // Slot changed
+        }
+        if (current.isEmpty) {
+            return true; // Item was consumed and stack became empty
+        }
+        if (current.item != lastLuseItem) {
+            return true; // Item changed (e.g., potion bottle turned into glass bottle)
+        }
+        if (current.count != lastLuseCount) {
+            return true; // Count changed (decremented)
+        }
+        return false;
+    }
+
     /**
      * 客户端 Tick 回调
      */
     public static void onClientTick() {
+        if (clientTickCount == lastProcessedTickCount) {
+            return;
+        }
+        lastProcessedTickCount = clientTickCount;
+
         try {
             Object client = CommandDispatcher.getClient();
             Object player = CommandDispatcher.getClientPlayer();
@@ -407,6 +484,24 @@ public class AutomationManager {
                         lusePressKey(client, "key.use");
                         luseIncrementKeyCounter(client, "key.use");
 
+                        // 记录使用前的 stack 信息
+                        if (!isBow) {
+                            LuseStackInfo info = getLuseStackInfo(player);
+                            if (info != null && !info.isEmpty) {
+                                lastLuseSlot = info.slot;
+                                lastLuseItem = info.item;
+                                lastLuseCount = info.count;
+                            } else {
+                                lastLuseSlot = -1;
+                                lastLuseItem = null;
+                                lastLuseCount = -1;
+                            }
+                        } else {
+                            lastLuseSlot = -1;
+                            lastLuseItem = null;
+                            lastLuseCount = -1;
+                        }
+
                         // 为了避免双重手swing或打断动画，只在第一 tick 尝试一次 interactItem
                         Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
                         Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
@@ -450,7 +545,13 @@ public class AutomationManager {
 
                     case 2: // Stage 2: Delay (延迟/缓冲阶段)
                         luseDelayTicks++;
-                        if (luseDelayTicks >= 8) {
+                        boolean canProceed = luseDelayTicks >= 8;
+                        if (canProceed && !isBow && lastLuseSlot != -1) {
+                            if (!isLuseStackChanged(player) && luseDelayTicks < 60) {
+                                canProceed = false;
+                            }
+                        }
+                        if (canProceed) {
                             if (luseCount != -2) {
                                 luseStage = 0;
                             }
