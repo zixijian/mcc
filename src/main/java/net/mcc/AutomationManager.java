@@ -312,6 +312,18 @@ public class AutomationManager {
             Object player = CommandDispatcher.getClientPlayer();
             if (player == null) return;
 
+            Object world = CommandDispatcher.getClientWorld();
+            if (world != null) {
+                long gameTime = -1;
+                try { gameTime = ((Number) MappingHelper.invokeMethod(world, "getTime")).longValue(); } catch (Exception ignored) {}
+                if (gameTime != -1) {
+                    if (gameTime == lastProcessedGameTime) {
+                        return;
+                    }
+                    lastProcessedGameTime = gameTime;
+                }
+            }
+
             // 1. 自动复活 (无视屏幕/GUI打开状态，优先处理)
             try {
                 float hp = ((Number) MappingHelper.invokeMethod(player, "getHealth")).floatValue();
@@ -515,8 +527,38 @@ public class AutomationManager {
                         }
 
                         // 判定单次使用动作完成或中断的条件：
-                        // 如果开始使用过（luseStarted = true）且当前不再使用（!isUsing），或者长按超过了一定安全时长（如 100 ticks）
-                        if ((!isBow && luseStarted && !isUsing) || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
+                        // 对于食物/药水（!isBow）：必须是已经开始使用（luseStarted = true）并且检测到手持物品栈发生改变（即服务器成功消耗），或者达到了超时上限（如 100 ticks）
+                        // 对于拉弓等（isBow）：当按住 ticks 达到最大蓄力时间，或者长按超过了一定安全时长（如 100 ticks）
+                        boolean finished = false;
+                        if (!isBow) {
+                            if (luseStarted) {
+                                if (lastLuseSlot != -1) {
+                                    if (isLuseStackChanged(player)) {
+                                        finished = true;
+                                    } else if (luseActiveTicks > 100) {
+                                        finished = true;
+                                    }
+                                } else {
+                                    // 兜底策略：如果没能成功记录 stack，回退到原预测逻辑
+                                    if (!isUsing) {
+                                        finished = true;
+                                    } else if (luseActiveTicks > 100) {
+                                        finished = true;
+                                    }
+                                }
+                            } else {
+                                // 如果按了 40 ticks 还没开始使用，说明当前可能无法使用此物品（比如饱食度已满，或者无法在此处使用），直接结束
+                                if (luseActiveTicks >= 40) {
+                                    finished = true;
+                                }
+                            }
+                        } else {
+                            if (luseActiveTicks >= maxHoldTicks) {
+                                finished = true;
+                            }
+                        }
+
+                        if (finished) {
                             luseReleaseKey(client, "key.use");
                             luseStage = 2;
                             luseDelayTicks = 0;
@@ -534,13 +576,7 @@ public class AutomationManager {
 
                     case 2: // Stage 2: Delay (延迟/缓冲阶段)
                         luseDelayTicks++;
-                        boolean canProceed = luseDelayTicks >= 8;
-                        if (canProceed && !isBow && lastLuseSlot != -1) {
-                            if (!isLuseStackChanged(player) && luseDelayTicks < 60) {
-                                canProceed = false;
-                            }
-                        }
-                        if (canProceed) {
+                        if (luseDelayTicks >= 8) {
                             if (luseCount != -2) {
                                 luseStage = 0;
                             }
