@@ -11,6 +11,7 @@ public class MinecraftClientMixin {
     @Inject(method = "method_1574", at = @At("HEAD"), remap = false, require = 0)
     private void onTick(CallbackInfo ci) {
         try {
+            AutomationManager.incrementClientTick();
             AutomationManager.onClientTick();
         } catch (Throwable t) {
             t.printStackTrace();
