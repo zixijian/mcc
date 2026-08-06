@@ -11,6 +11,7 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
     private static boolean singleRespawnTriggered = false;
+    private static boolean miningBuffActive = false;
 
     private static int internalAttackTicks = 0;
     private static int waitTicksAfterHalfCharge = -1;
@@ -145,6 +146,26 @@ public class AutomationManager {
         CommandDispatcher.addFeedback("§c无法获取玩家状态");
     }
 
+    public static void handleBuffCommand(String arg) {
+        if ("on".equals(arg)) {
+            miningBuffActive = true;
+            CommandDispatcher.addFeedback("§a挖掘 Buff: 开启");
+            return;
+        } else if ("off".equals(arg)) {
+            miningBuffActive = false;
+            CommandDispatcher.addFeedback("§e挖掘 Buff: 关闭");
+            return;
+        }
+
+        // 不带参数（或未知参数）则作为状态切换
+        miningBuffActive = !miningBuffActive;
+        CommandDispatcher.addFeedback("§a挖掘 Buff: " + (miningBuffActive ? "开启" : "关闭"));
+    }
+
+    public static boolean isMiningBuffActive() {
+        return miningBuffActive;
+    }
+
     public static void setLook(float pitch, float yaw) throws Exception {
         lockedPitch = pitch;
         lockedYaw = yaw;
@@ -181,6 +202,7 @@ public class AutomationManager {
         luseDelayTicks = 0;
         luseActiveTicks = 0;
         luseStarted = false;
+        miningBuffActive = false;
         try {
             Object client = CommandDispatcher.getClient();
             releaseKeyTranslation(client, "key.attack");
@@ -191,7 +213,7 @@ public class AutomationManager {
 
     public static void showStatus() {
         String luseStr = luseCount == -2 ? "关闭" : (luseCount == -1 ? "持续" : luseCount + " 次");
-        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b", attackFreq, useFreq, luseStr, autoRespawn));
+        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b Buff:%b", attackFreq, useFreq, luseStr, autoRespawn, miningBuffActive));
     }
 
     public static void probeMappings() {
@@ -424,6 +446,16 @@ public class AutomationManager {
                     incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
                     useTimer = useFreq;
+                }
+            }
+
+            // 5. 挖掘 Buff (强制重置挖掘冷却)
+            if (miningBuffActive) {
+                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                if (im != null) {
+                    try { MappingHelper.setFieldValue(im, "field_3716", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(im, "field3716", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(im, "blockBreakingCooldown", 0); } catch (Exception ignored) {}
                 }
             }
 
@@ -759,6 +791,9 @@ public class AutomationManager {
             if (im != null) {
                 try { MappingHelper.setFieldValue(im, "field_1613", 0); } catch (Exception ignored) {}
                 try { MappingHelper.setFieldValue(im, "field1613", 0); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(im, "field_3716", 0); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(im, "field3716", 0); } catch (Exception ignored) {}
+                try { MappingHelper.setFieldValue(im, "blockBreakingCooldown", 0); } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
     }

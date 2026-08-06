@@ -116,6 +116,10 @@ public class CommandDispatcher {
                     String respawnArg = parts.length > 2 ? parts[2].toLowerCase() : "";
                     AutomationManager.handleRespawnCommand(respawnArg);
                     break;
+                case "buff":
+                    String buffArg = parts.length > 2 ? parts[2].toLowerCase() : "";
+                    AutomationManager.handleBuffCommand(buffArg);
+                    break;
                 case "look":
                     if (parts.length > 3) {
                         AutomationManager.setLook(Float.parseFloat(parts[2]), Float.parseFloat(parts[3]));
@@ -143,7 +147,7 @@ public class CommandDispatcher {
         addFeedback("§b[MCC 命令列表]");
         addFeedback("§f/mcc time | list | hp | xp | tps");
         addFeedback("§f/mcc choose/cs <slot> | slot [slot] | tools | drop [slot|all]");
-        addFeedback("§f/mcc attack/atk [freq] | use [freq] | luse [count] | respawn [on|off]");
+        addFeedback("§f/mcc attack/atk [freq] | use [freq] | luse [count] | respawn [on|off] | buff [on|off]");
         addFeedback("§f/mcc look <pitch> <yaw>");
         addFeedback("§f/mcc status | stop | tune <1-4>");
     }
