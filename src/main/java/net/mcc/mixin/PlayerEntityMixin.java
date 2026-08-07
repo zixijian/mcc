@@ -5,13 +5,14 @@ import net.mcc.MappingHelper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(targets = "net.minecraft.class_1657") // PlayerEntity
 public class PlayerEntityMixin {
 
     @Inject(method = "method_7351", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
-    private void onGetBlockBreakingSpeed(net.minecraft.block.BlockState blockState, CallbackInfoReturnable<Float> cir) {
+    private void onGetBlockBreakingSpeed(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
         if (AutomationManager.isMiningBuffActive()) {
             try {
                 Object inventory = MappingHelper.getFieldValue(this, "field_7514", null);
