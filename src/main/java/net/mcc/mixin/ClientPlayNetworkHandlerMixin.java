@@ -1,5 +1,6 @@
 package net.mcc.mixin;
 
+import net.mcc.AutomationManager;
 import net.mcc.CommandDispatcher;
 import net.mcc.MappingHelper;
 import net.mcc.PerformanceMonitor;
@@ -193,6 +194,19 @@ public class ClientPlayNetworkHandlerMixin {
     private void onSendChatCommand(String command, CallbackInfo ci) {
         if (CommandDispatcher.dispatch("/" + command)) {
             ci.cancel();
+        }
+    }
+
+    @Inject(method = "method_10743", at = @At("HEAD"), remap = false, require = 0)
+    private void onSendPacket(@Coerce Object packet, CallbackInfo ci) {
+        if (AutomationManager.isMiningBuffActive() && packet != null) {
+            try {
+                Class<?> movePacketClass = MappingHelper.getClass("net.minecraft.class_2828");
+                if (movePacketClass.isInstance(packet)) {
+                    // Force onGround (field_12888) to be true to bypass server-side flight deceleration validation!
+                    MappingHelper.setFieldValue(packet, "field_12888", true);
+                }
+            } catch (Throwable ignored) {}
         }
     }
 }
