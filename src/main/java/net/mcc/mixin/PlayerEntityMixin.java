@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class PlayerEntityMixin {
 
     @Inject(method = "method_7351", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
-    private void onGetBlockBreakingSpeed(Object blockState, CallbackInfoReturnable<Float> cir) {
+    private void onGetBlockBreakingSpeed(net.minecraft.block.BlockState blockState, CallbackInfoReturnable<Float> cir) {
         if (AutomationManager.isMiningBuffActive()) {
             try {
                 Object inventory = MappingHelper.getFieldValue(this, "field_7514", null);
