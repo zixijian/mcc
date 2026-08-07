@@ -429,6 +429,7 @@ public class MappingHelper {
         if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
         if (yarnName.equals("getAttackCooldownProgressPerTick")) { names.add("method_26352"); }
         if (yarnName.equals("getAttackCooldownProgress")) { names.add("method_7261"); }
+        if (yarnName.equals("getBlockBreakingSpeed")) { names.add("method_7370"); names.add("method_7351"); }
         if (yarnName.equals("swingHand")) { names.add("method_6104"); }
         if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
         if (yarnName.equals("getString")) { names.add("method_10851"); }
