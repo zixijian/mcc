@@ -1,21 +1,22 @@
 package net.mcc.mixin;
 
 import net.mcc.AutomationManager;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(PlayerEntity.class)
+@Mixin(targets = "net.minecraft.class_1657") // PlayerEntity
 public class PlayerEntityMixin {
 
-    @Inject(method = "getBlockBreakingSpeed", at = @At("HEAD"), cancellable = true)
-    private void onGetBlockBreakingSpeed(BlockState blockState, CallbackInfoReturnable<Float> cir) {
+    @Inject(method = {
+        "getBlockBreakingSpeed(Lnet/minecraft/block/BlockState;)F",
+        "method_7351(Lnet/minecraft/class_2680;)F"
+    }, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    private void onGetBlockBreakingSpeed(net.minecraft.block.BlockState blockState, CallbackInfoReturnable<Float> cir) {
         if (AutomationManager.isMiningBuffActive()) {
             try {
-                PlayerEntity player = (PlayerEntity)(Object)this;
+                net.minecraft.entity.player.PlayerEntity player = (net.minecraft.entity.player.PlayerEntity)(Object)this;
                 float baseSpeed = player.getInventory().getBlockBreakingSpeed(blockState);
                 float speed = baseSpeed;
                 if (speed > 1.0f) {

@@ -201,10 +201,10 @@ public class ClientPlayNetworkHandlerMixin {
     private void onSendPacket(@Coerce Object packet, CallbackInfo ci) {
         if (AutomationManager.isMiningBuffActive() && packet != null) {
             try {
-                Class<?> movePacketClass = MappingHelper.getClass("net.minecraft.class_2828");
+                Class<?> movePacketClass = MappingHelper.getClass("PlayerMoveC2SPacket");
                 if (movePacketClass.isInstance(packet)) {
                     // Force onGround (field_12888) to be true to bypass server-side flight deceleration validation!
-                    MappingHelper.setFieldValue(packet, "field_12888", true);
+                    MappingHelper.setFieldValue(packet, "onGround", true);
                 }
             } catch (Throwable ignored) {}
         }
