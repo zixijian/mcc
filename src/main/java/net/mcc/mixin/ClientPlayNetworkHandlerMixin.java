@@ -201,10 +201,20 @@ public class ClientPlayNetworkHandlerMixin {
     private void onSendPacket(@Coerce Object packet, CallbackInfo ci) {
         if (AutomationManager.isMiningBuffActive() && packet != null) {
             try {
-                Class<?> movePacketClass = MappingHelper.getClass("PlayerMoveC2SPacket");
-                if (movePacketClass.isInstance(packet)) {
-                    // Force onGround (field_12888) to be true to bypass server-side flight deceleration validation!
-                    MappingHelper.setFieldValue(packet, "onGround", true);
+                Object client = CommandDispatcher.getClient();
+                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                boolean isMining = false;
+                if (im != null) {
+                    try { isMining = (boolean) MappingHelper.getFieldValue(im, "field_3717", null); } catch (Exception e1) {
+                        try { isMining = (boolean) MappingHelper.getFieldValue(im, "breakingBlock", null); } catch (Exception ignored) {}
+                    }
+                }
+                if (isMining) {
+                    Class<?> movePacketClass = MappingHelper.getClass("PlayerMoveC2SPacket");
+                    if (movePacketClass.isInstance(packet)) {
+                        // Force onGround (field_12888) to be true to bypass server-side flight deceleration validation!
+                        MappingHelper.setFieldValue(packet, "onGround", true);
+                    }
                 }
             } catch (Throwable ignored) {}
         }
