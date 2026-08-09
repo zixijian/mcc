@@ -11,6 +11,7 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
     private static boolean singleRespawnTriggered = false;
+    private static boolean miningBuffActive = false;
 
     private static int internalAttackTicks = 0;
     private static int waitTicksAfterHalfCharge = -1;
@@ -116,6 +117,27 @@ public class AutomationManager {
         CommandDispatcher.addFeedback("§a自动使用: " + (freq == -1 ? "关闭" : (freq == 0 ? "持续" : freq + " ticks")));
     }
 
+    public static boolean isMiningBuffActive() {
+        return miningBuffActive;
+    }
+
+    public static void handleBuffCommand(String arg) {
+        if ("on".equals(arg)) {
+            miningBuffActive = true;
+            CommandDispatcher.addFeedback("§a挖矿Buff: 开启");
+        } else if ("off".equals(arg)) {
+            miningBuffActive = false;
+            CommandDispatcher.addFeedback("§e挖矿Buff: 关闭");
+        } else {
+            miningBuffActive = !miningBuffActive;
+            if (miningBuffActive) {
+                CommandDispatcher.addFeedback("§a挖矿Buff: 开启");
+            } else {
+                CommandDispatcher.addFeedback("§e挖矿Buff: 关闭");
+            }
+        }
+    }
+
     public static void handleRespawnCommand(String arg) {
         if ("on".equals(arg)) {
             autoRespawn = true;
@@ -176,6 +198,7 @@ public class AutomationManager {
         attackFreq = -1; useFreq = -1;
         attackOnce = useOnce = false;
         lockedPitch = lockedYaw = null;
+        miningBuffActive = false;
         luseCount = -2;
         luseStage = 0;
         luseDelayTicks = 0;
@@ -191,7 +214,7 @@ public class AutomationManager {
 
     public static void showStatus() {
         String luseStr = luseCount == -2 ? "关闭" : (luseCount == -1 ? "持续" : luseCount + " 次");
-        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b", attackFreq, useFreq, luseStr, autoRespawn));
+        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b Buff:%b", attackFreq, useFreq, luseStr, autoRespawn, miningBuffActive));
     }
 
     public static void probeMappings() {
@@ -400,6 +423,18 @@ public class AutomationManager {
                 attackTimer = 0;
                 internalAttackTicks = 0;
                 waitTicksAfterHalfCharge = -1;
+            }
+
+            // 3. 挖矿延迟重置
+            if (miningBuffActive) {
+                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                if (im != null) {
+                    try { MappingHelper.setFieldValue(im, "field_1613", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(im, "field1613", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(im, "field_3716", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(im, "field3716", 0); } catch (Exception ignored) {}
+                    try { MappingHelper.setFieldValue(im, "blockBreakingCooldown", 0); } catch (Exception ignored) {}
+                }
             }
 
             // 3. 使用逻辑
