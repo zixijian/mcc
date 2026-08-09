@@ -1,6 +1,7 @@
 package net.mcc.mixin;
 
 import net.mcc.AutomationManager;
+import net.mcc.MappingHelper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -17,10 +18,9 @@ public class PlayerEntityMixin {
     private void onGetBlockBreakingSpeed(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
         if (AutomationManager.isMiningBuffActive()) {
             try {
-                net.minecraft.entity.player.PlayerEntity player = (net.minecraft.entity.player.PlayerEntity)(Object)this;
-                net.minecraft.entity.player.PlayerInventory inventory = player.getInventory();
+                Object inventory = MappingHelper.getFieldValue(this, "inventory", null);
                 if (inventory != null) {
-                    float baseSpeed = inventory.getBlockBreakingSpeed((net.minecraft.block.BlockState) blockState);
+                    float baseSpeed = ((Number) MappingHelper.invokeMethod(inventory, "getBlockBreakingSpeed", blockState)).floatValue();
                     float speed = baseSpeed;
                     if (speed > 1.0f) {
                         speed += 26.0f; // Efficiency 5 (5*5 + 1)

@@ -122,6 +122,7 @@ public class MappingHelper {
         MAPPINGS.put("Hand", "net/minecraft/class_1268");
         MAPPINGS.put("Screen", "net/minecraft/class_437");
         MAPPINGS.put("FishingRodItem", "net/minecraft/class_1787");
+        MAPPINGS.put("PlayerMoveC2SPacket", "net/minecraft/class_2828");
 
         // 字段映射 (Yarn -> Intermediary)
         MAPPINGS.put("player", "field_1724");
@@ -137,6 +138,7 @@ public class MappingHelper {
         MAPPINGS.put("experienceLevel", "field_7520");
         MAPPINGS.put("experienceProgress", "field_7510");
         MAPPINGS.put("totalExperience", "field_7521");
+        MAPPINGS.put("onGround", "field_12888");
         MAPPINGS.put("selectedSlot", "field_7545");
         MAPPINGS.put("currentScreen", is1214 ? "field_1757" : "field_1755");
         MAPPINGS.put("main", "field_7547");
@@ -275,6 +277,7 @@ public class MappingHelper {
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
             case "FishingRodItem": return "net.minecraft.item.FishingRodItem";
+            case "PlayerMoveC2SPacket": return "net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket";
             default: return null;
         }
     }
