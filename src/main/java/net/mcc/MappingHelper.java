@@ -138,7 +138,7 @@ public class MappingHelper {
         MAPPINGS.put("experienceLevel", "field_7520");
         MAPPINGS.put("experienceProgress", "field_7510");
         MAPPINGS.put("totalExperience", "field_7521");
-        MAPPINGS.put("onGround", "field_12888");
+        MAPPINGS.put("onGround", "field_29179");
         MAPPINGS.put("selectedSlot", "field_7545");
         MAPPINGS.put("currentScreen", is1214 ? "field_1757" : "field_1755");
         MAPPINGS.put("main", "field_7547");
