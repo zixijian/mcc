@@ -1,7 +1,9 @@
 package net.mcc.mixin;
 
 import net.mcc.AutomationManager;
-import net.mcc.MappingHelper;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.block.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -18,32 +20,10 @@ public class PlayerEntityMixin {
     private void onGetBlockBreakingSpeed(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
         if (AutomationManager.isMiningBuffActive()) {
             try {
-                Object inventory = MappingHelper.getFieldValue(this, "inventory", null);
+                PlayerEntity player = (PlayerEntity) (Object) this;
+                PlayerInventory inventory = player.getInventory();
                 if (inventory != null) {
-                    float baseSpeed = 1.0f;
-
-                    // Search for getBlockBreakingSpeed or method_7370 by name only to be 100% robust
-                    java.lang.reflect.Method targetMethod = null;
-                    for (java.lang.reflect.Method m : inventory.getClass().getMethods()) {
-                        if (m.getName().equals("getBlockBreakingSpeed") || m.getName().equals("method_7370")) {
-                            targetMethod = m;
-                            break;
-                        }
-                    }
-                    if (targetMethod == null) {
-                        for (java.lang.reflect.Method m : inventory.getClass().getDeclaredMethods()) {
-                            if (m.getName().equals("getBlockBreakingSpeed") || m.getName().equals("method_7370")) {
-                                targetMethod = m;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (targetMethod != null) {
-                        targetMethod.setAccessible(true);
-                        baseSpeed = ((Number) targetMethod.invoke(inventory, blockState)).floatValue();
-                    }
-
+                    float baseSpeed = inventory.getBlockBreakingSpeed((BlockState) blockState);
                     float speed = baseSpeed;
                     if (speed > 1.0f) {
                         speed += 26.0f; // Efficiency 5 (5*5 + 1)
