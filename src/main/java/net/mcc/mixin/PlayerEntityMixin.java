@@ -12,15 +12,38 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class PlayerEntityMixin {
 
     @Inject(method = {
-        "getBlockBreakingSpeed(Lnet/minecraft/block/BlockState;)F",
-        "method_7351(Lnet/minecraft/class_2680;)F"
+        "getBlockBreakingSpeed",
+        "method_7351"
     }, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void onGetBlockBreakingSpeed(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
         if (AutomationManager.isMiningBuffActive()) {
             try {
                 Object inventory = MappingHelper.getFieldValue(this, "inventory", null);
                 if (inventory != null) {
-                    float baseSpeed = ((Number) MappingHelper.invokeMethod(inventory, "getBlockBreakingSpeed", blockState)).floatValue();
+                    float baseSpeed = 1.0f;
+
+                    // Search for getBlockBreakingSpeed or method_7370 by name only to be 100% robust
+                    java.lang.reflect.Method targetMethod = null;
+                    for (java.lang.reflect.Method m : inventory.getClass().getMethods()) {
+                        if (m.getName().equals("getBlockBreakingSpeed") || m.getName().equals("method_7370")) {
+                            targetMethod = m;
+                            break;
+                        }
+                    }
+                    if (targetMethod == null) {
+                        for (java.lang.reflect.Method m : inventory.getClass().getDeclaredMethods()) {
+                            if (m.getName().equals("getBlockBreakingSpeed") || m.getName().equals("method_7370")) {
+                                targetMethod = m;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (targetMethod != null) {
+                        targetMethod.setAccessible(true);
+                        baseSpeed = ((Number) targetMethod.invoke(inventory, blockState)).floatValue();
+                    }
+
                     float speed = baseSpeed;
                     if (speed > 1.0f) {
                         speed += 26.0f; // Efficiency 5 (5*5 + 1)
