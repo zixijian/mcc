@@ -208,11 +208,29 @@ public class ClientPlayNetworkHandlerMixin {
                     try { isMining = (boolean) MappingHelper.getFieldValue(im, "field_3717", null); } catch (Exception e1) {
                         try { isMining = (boolean) MappingHelper.getFieldValue(im, "breakingBlock", null); } catch (Exception ignored) {}
                     }
+                    if (!isMining) {
+                        try {
+                            Object pos = MappingHelper.getFieldValue(im, "field_3714", null);
+                            if (pos == null) pos = MappingHelper.getFieldValue(im, "currentBreakingPos", null);
+                            if (pos != null) isMining = true;
+                        } catch (Exception ignored) {}
+                    }
+                    if (!isMining) {
+                        try {
+                            float progress = ((Number) MappingHelper.getFieldValue(im, "field_3715", null)).floatValue();
+                            if (progress > 0.0f) isMining = true;
+                        } catch (Exception ignored) {
+                            try {
+                                float progress = ((Number) MappingHelper.getFieldValue(im, "currentBreakingProgress", null)).floatValue();
+                                if (progress > 0.0f) isMining = true;
+                            } catch (Exception ignored2) {}
+                        }
+                    }
                 }
                 if (isMining) {
                     Class<?> movePacketClass = MappingHelper.getClass("PlayerMoveC2SPacket");
                     if (movePacketClass.isInstance(packet)) {
-                        // Force onGround (field_12888) to be true to bypass server-side flight deceleration validation!
+                        // Force onGround (field_29179) to be true to bypass server-side flight deceleration validation!
                         MappingHelper.setFieldValue(packet, "onGround", true);
                     }
                 }
