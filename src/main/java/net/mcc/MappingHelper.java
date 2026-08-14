@@ -162,6 +162,8 @@ public class MappingHelper {
         MAPPINGS.put("getHealth", "method_6032");
         MAPPINGS.put("getMaxHealth", "method_6063");
         MAPPINGS.put("getHungerManager", "method_6122");
+        MAPPINGS.put("getInventory", "method_31548");
+        MAPPINGS.put("getBlockBreakingSpeed", "method_7370");
         MAPPINGS.put("getFoodLevel", "method_7586");
         MAPPINGS.put("getTimeOfDay", "method_8510");
         MAPPINGS.put("getTime", "method_11871");

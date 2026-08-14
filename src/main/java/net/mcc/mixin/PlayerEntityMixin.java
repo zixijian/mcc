@@ -1,12 +1,14 @@
 package net.mcc.mixin;
 
 import net.mcc.AutomationManager;
-import net.mcc.MappingHelper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 /**
  * Mixin into PlayerEntity to override block breaking speed when /mcc buff is active.
@@ -28,47 +30,93 @@ public class PlayerEntityMixin {
         require = 0
     )
     private void onGetBlockBreakingSpeed(@Coerce Object state, CallbackInfoReturnable<Float> cir) {
-        if (!AutomationManager.isBuffEnabled()) {
+        if (!AutomationManager.isBuffEnabled() || state == null) {
             return;
         }
 
         try {
             Object player = this;
-            // Get base breaking speed from player's inventory using state
-            // PlayerInventory.getBlockBreakingSpeed(BlockState) -> method_7370
-            float baseSpeed = 1.0f;
+
+            // 1. Locate PlayerInventory object on PlayerEntity
+            Object inventory = null;
             try {
-                Object inventory = MappingHelper.getFieldValue(player, "inventory", null);
-                if (inventory != null) {
-                    baseSpeed = ((Number) MappingHelper.invokeMethod(inventory, "method_7370", state)).floatValue();
-                }
-            } catch (Exception e1) {
-                try {
-                    Object inventory = MappingHelper.getFieldValue(player, "inventory", null);
-                    if (inventory != null) {
-                        baseSpeed = ((Number) MappingHelper.invokeMethod(inventory, "getBlockBreakingSpeed", state)).floatValue();
+                Class<?> curr = player.getClass();
+                while (curr != null && curr != Object.class) {
+                    for (Field f : curr.getDeclaredFields()) {
+                        if (f.getType().getName().contains("PlayerInventory") || f.getType().getName().contains("class_1661")) {
+                            f.setAccessible(true);
+                            inventory = f.get(player);
+                            if (inventory != null) break;
+                        }
                     }
-                } catch (Exception e2) {
-                    baseSpeed = 1.0f;
+                    if (inventory != null) break;
+                    curr = curr.getSuperclass();
+                }
+            } catch (Throwable ignored) {}
+
+            // 2. Fetch tool base breaking speed for target BlockState safely
+            float baseSpeed = 1.0f;
+            if (inventory != null) {
+                for (Method m : inventory.getClass().getDeclaredMethods()) {
+                    if (m.getReturnType() == float.class && m.getParameterCount() == 1) {
+                        if (m.getParameterTypes()[0].isInstance(state)) {
+                            try {
+                                m.setAccessible(true);
+                                Object res = m.invoke(inventory, state);
+                                if (res instanceof Number) {
+                                    baseSpeed = ((Number) res).floatValue();
+                                    break;
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                    }
                 }
             }
 
             float speed = baseSpeed;
 
-            // Efficiency 5 logic: if tool is suitable for block (baseSpeed > 1.0f), add efficiency bonus (lvl*lvl + 1 = 26)
-            if (speed > 1.0f) {
-                speed += 26.0f; // Efficiency 5
+            // 3. Check if player holds an item in main hand
+            boolean holdingItem = false;
+            try {
+                Object mainHandStack = null;
+                Class<?> pCurr = player.getClass();
+                while (pCurr != null && pCurr != Object.class) {
+                    for (Method m : pCurr.getDeclaredMethods()) {
+                        if ((m.getName().equals("getMainHandStack") || m.getName().equals("method_6047")) && m.getParameterCount() == 0) {
+                            m.setAccessible(true);
+                            mainHandStack = m.invoke(player);
+                            break;
+                        }
+                    }
+                    if (mainHandStack != null) break;
+                    pCurr = pCurr.getSuperclass();
+                }
+
+                if (mainHandStack != null) {
+                    for (Method m : mainHandStack.getClass().getDeclaredMethods()) {
+                        if ((m.getName().equals("isEmpty") || m.getName().equals("method_7960")) && m.getParameterCount() == 0) {
+                            try {
+                                m.setAccessible(true);
+                                holdingItem = !((Boolean) m.invoke(mainHandStack));
+                                break;
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            // Efficiency 5 bonus (+26.0f)
+            if (speed > 1.0f || holdingItem) {
+                speed += 26.0f;
             }
 
-            // Haste 2 logic: multiply speed by (1.0f + 0.2f * amplifier) = 1.4f for Haste 2
+            // Haste 2 multiplier (* 1.4f)
             speed *= 1.4f;
 
-            // Note: We deliberately do NOT divide speed by 5.0f for underwater or airborne states,
-            // effectively removing underwater and flight/airborne mining slowdown.
-
+            // Bypass underwater (/5.0f) and airborne/flight (/5.0f) speed reductions
             cir.setReturnValue(speed);
         } catch (Throwable t) {
-            // Fallback: do not cancel if any reflection exception occurs
+            // Fallback: do not cancel if any exception occurs
         }
     }
 }
