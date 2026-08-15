@@ -24,12 +24,12 @@ public class PlayerEntityMixin {
             "getBlockBreakingSpeed(Lnet/minecraft/block/BlockState;)F",
             "method_7351(Lnet/minecraft/class_2680;)F"
         },
-        at = @At("HEAD"),
+        at = @At("RETURN"),
         cancellable = true,
         remap = false,
         require = 0
     )
-    private void onGetBlockBreakingSpeed(@Coerce Object state, CallbackInfoReturnable<Float> cir) {
+    private void onGetBlockBreakingSpeedPost(@Coerce Object state, CallbackInfoReturnable<Float> cir) {
         if (!AutomationManager.isBuffEnabled() || state == null) {
             return;
         }
@@ -113,10 +113,10 @@ public class PlayerEntityMixin {
             // Haste 2 multiplier (* 1.4f)
             speed *= 1.4f;
 
-            // Bypass underwater (/5.0f) and airborne/flight (/5.0f) speed reductions
+            // Bypasses underwater and airborne /5.0f divisions natively
             cir.setReturnValue(speed);
         } catch (Throwable t) {
-            // Fallback: do not cancel if any exception occurs
+            // Fallback
         }
     }
 }
