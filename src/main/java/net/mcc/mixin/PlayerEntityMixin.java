@@ -10,8 +10,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Mixin into PlayerEntity to override block breaking speed when /mcc buff is active.
- * Calculates Efficiency V (+26.0f when suitable) and Haste II (*1.4f multiplier)
- * while bypassing airborne and underwater mining speed reductions.
+ * Guarantees Efficiency V (+26.0f) and Haste II (*1.4f) without double-stacking existing enchantments,
+ * and bypasses airborne and underwater 5x mining speed reductions natively.
  */
 @Mixin(targets = "net.minecraft.class_1657") // PlayerEntity
 public class PlayerEntityMixin {
@@ -35,31 +35,58 @@ public class PlayerEntityMixin {
         }
 
         try {
+            float speed = cir.getReturnValue();
             Object player = this;
 
-            // 1. Get base tool breaking speed from inventory (method_7370 / getBlockBreakingSpeed)
-            float baseSpeed = 1.0f;
+            // 1. Check if player is on ground
+            boolean onGround = true;
             try {
-                Object inventory = MappingHelper.getFieldValue(player, "inventory", null);
-                if (inventory != null) {
-                    Object res = MappingHelper.invokeMethod(inventory, "getBlockBreakingSpeed", state);
-                    if (res instanceof Number) {
-                        baseSpeed = ((Number) res).floatValue();
-                    }
-                }
-            } catch (Throwable ignored) {}
-
-            float speed = baseSpeed;
-
-            // 2. Efficiency 5 (+26.0f) applied ONLY when tool is suitable for block (baseSpeed > 1.0f)
-            if (speed > 1.0f) {
-                speed += 26.0f; // Efficiency 5 bonus
+                Object res = MappingHelper.invokeMethod(player, "isOnGround");
+                if (res instanceof Boolean) onGround = (Boolean) res;
+            } catch (Throwable e) {
+                try {
+                    Object val = MappingHelper.getFieldValue(player, "field_6012", null);
+                    if (val instanceof Boolean) onGround = (Boolean) val;
+                } catch (Throwable ignored) {}
             }
 
-            // 3. Haste 2 multiplier (* 1.4f)
+            // Undo vanilla 5x airborne mining speed reduction if in mid-air
+            if (!onGround) {
+                speed *= 5.0f;
+            }
+
+            // 2. Check if player is submerged in water
+            boolean submerged = false;
+            try {
+                Object res = MappingHelper.invokeMethod(player, "isSubmergedInWater");
+                if (res instanceof Boolean) submerged = (Boolean) res;
+            } catch (Throwable e) {
+                try {
+                    Object val = MappingHelper.getFieldValue(player, "field_6000", null);
+                    if (val instanceof Boolean) submerged = (Boolean) val;
+                } catch (Throwable ignored1) {
+                    try {
+                        Object val2 = MappingHelper.getFieldValue(player, "field_5973", null);
+                        if (val2 instanceof Boolean) submerged = (Boolean) val2;
+                    } catch (Throwable ignored2) {}
+                }
+            }
+
+            // Undo vanilla 5x underwater mining speed reduction if underwater
+            if (submerged) {
+                speed *= 5.0f;
+            }
+
+            // 3. Efficiency 5 bonus (+26.0f) applied if tool is suitable for block (speed > 1.0f)
+            if (speed > 1.0f) {
+                if (speed < 30.0f) {
+                    speed += 26.0f;
+                }
+            }
+
+            // 4. Haste 2 multiplier (* 1.4f)
             speed *= 1.4f;
 
-            // Bypasses underwater (/5.0f) and airborne/flight (/5.0f) penalties natively
             cir.setReturnValue(speed);
         } catch (Throwable t) {
             // Fallback
