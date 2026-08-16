@@ -8,6 +8,8 @@ import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.lang.reflect.Field;
+
 /**
  * Mixin into PlayerEntity to override block breaking speed when /mcc buff is active.
  * Guarantees Efficiency V (+26.0f) and Haste II (*1.4f) without double-stacking existing enchantments,
@@ -45,8 +47,8 @@ public class PlayerEntityMixin {
                 if (res instanceof Boolean) onGround = (Boolean) res;
             } catch (Throwable e) {
                 try {
-                    Object val = MappingHelper.getFieldValue(player, "field_6012", null);
-                    if (val instanceof Boolean) onGround = (Boolean) val;
+                    Field f = MappingHelper.findField(player.getClass(), "field_6012");
+                    onGround = f.getBoolean(player);
                 } catch (Throwable ignored) {}
             }
 
@@ -62,12 +64,12 @@ public class PlayerEntityMixin {
                 if (res instanceof Boolean) submerged = (Boolean) res;
             } catch (Throwable e) {
                 try {
-                    Object val = MappingHelper.getFieldValue(player, "field_6000", null);
-                    if (val instanceof Boolean) submerged = (Boolean) val;
+                    Field f = MappingHelper.findField(player.getClass(), "field_6000");
+                    submerged = f.getBoolean(player);
                 } catch (Throwable ignored1) {
                     try {
-                        Object val2 = MappingHelper.getFieldValue(player, "field_5973", null);
-                        if (val2 instanceof Boolean) submerged = (Boolean) val2;
+                        Field f2 = MappingHelper.findField(player.getClass(), "field_5973");
+                        submerged = f2.getBoolean(player);
                     } catch (Throwable ignored2) {}
                 }
             }
@@ -85,7 +87,9 @@ public class PlayerEntityMixin {
             }
 
             // 4. Haste 2 multiplier (* 1.4f)
-            speed *= 1.4f;
+            if (speed < 42.0f) {
+                speed *= 1.4f;
+            }
 
             cir.setReturnValue(speed);
         } catch (Throwable t) {
