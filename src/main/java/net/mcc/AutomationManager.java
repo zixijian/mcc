@@ -601,7 +601,13 @@ public class AutomationManager {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            boolean isBreaking = false;
+                            try { isBreaking = (boolean) MappingHelper.invokeMethod(im, "isBreakingBlock"); } catch (Exception ignored) {}
+                            if (isBreaking) {
+                                MappingHelper.invokeMethod(im, "updateBlockBreakingProgress", pos, side);
+                            } else {
+                                MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            }
                         }
                     } catch (Exception ignored) {}
                 }

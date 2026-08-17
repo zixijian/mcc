@@ -192,6 +192,8 @@ public class MappingHelper {
         MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
         MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
+        MAPPINGS.put("updateBlockBreakingProgress", is1214 ? "method_2910" : "method_2902");
+        MAPPINGS.put("isBreakingBlock", "method_2923");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
         MAPPINGS.put("interactBlock", is1214 ? "method_2896" : "method_2905");
@@ -422,6 +424,8 @@ public class MappingHelper {
         if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
         if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); names.add("method_2902"); }
         if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
+        if (yarnName.equals("updateBlockBreakingProgress")) { names.add("method_2910"); names.add("method_2902"); }
+        if (yarnName.equals("isBreakingBlock")) { names.add("method_2923"); names.add("method_2901"); }
         if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
         if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
         if (yarnName.equals("dayTime")) { names.add("method_11870"); names.add("comp_2191"); }

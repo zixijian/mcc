@@ -12,7 +12,7 @@ import java.lang.reflect.Field;
 
 /**
  * Mixin into PlayerEntity to override block breaking speed when /mcc buff is active.
- * Guarantees Efficiency V (+26.0f) and Haste II (*1.4f) without double-stacking existing enchantments,
+ * Guarantees Efficiency V (+26.0f) and Haste II (*1.4f),
  * and bypasses airborne and underwater 5x mining speed reductions natively.
  */
 @Mixin(targets = "net.minecraft.class_1657") // PlayerEntity
@@ -81,15 +81,11 @@ public class PlayerEntityMixin {
 
             // 3. Efficiency 5 bonus (+26.0f) applied if tool is suitable for block (speed > 1.0f)
             if (speed > 1.0f) {
-                if (speed < 30.0f) {
-                    speed += 26.0f;
-                }
+                speed += 26.0f;
             }
 
             // 4. Haste 2 multiplier (* 1.4f)
-            if (speed < 42.0f) {
-                speed *= 1.4f;
-            }
+            speed *= 1.4f;
 
             cir.setReturnValue(speed);
         } catch (Throwable t) {
