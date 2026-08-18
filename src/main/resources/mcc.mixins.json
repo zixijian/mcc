@@ -8,8 +8,7 @@
     "ChatHudMixin",
     "ChatScreenMixin",
     "MinecraftClientMixin",
-    "PlayerEntityMixin",
-    "ClientConnectionMixin"
+    "PlayerEntityMixin"
   ],
   "client": [
   ],
