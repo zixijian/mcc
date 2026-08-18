@@ -12,7 +12,7 @@ import java.lang.reflect.Field;
 
 /**
  * Mixin into PlayerEntity to override block breaking speed when /mcc buff is active.
- * Applies Efficiency V (+26.0f) and Haste II (*1.4f) while removing airborne and underwater slowdowns.
+ * Calculates Efficiency V (+26.0f) and Haste II (*1.4f) while removing airborne and underwater mining speed reductions.
  */
 @Mixin(targets = "net.minecraft.class_1657") // PlayerEntity
 public class PlayerEntityMixin {
@@ -51,7 +51,7 @@ public class PlayerEntityMixin {
                 } catch (Throwable ignored) {}
             }
 
-            // Remove vanilla 5x airborne mining speed penalty when in mid-air
+            // Undo 5x airborne mining speed reduction if in mid-air
             if (!onGround) {
                 speed *= 5.0f;
             }
@@ -73,7 +73,7 @@ public class PlayerEntityMixin {
                 }
             }
 
-            // Remove vanilla 5x underwater mining speed penalty when underwater
+            // Undo 5x underwater mining speed reduction if underwater
             if (submerged) {
                 speed *= 5.0f;
             }

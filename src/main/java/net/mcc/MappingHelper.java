@@ -163,7 +163,7 @@ public class MappingHelper {
         MAPPINGS.put("getMaxHealth", "method_6063");
         MAPPINGS.put("getHungerManager", "method_6122");
         MAPPINGS.put("getInventory", "method_31548");
-        MAPPINGS.put("getBlockBreakingSpeed", "method_7370");
+        MAPPINGS.put("getBlockBreakingSpeed", "method_7351");
         MAPPINGS.put("getFoodLevel", "method_7586");
         MAPPINGS.put("getTimeOfDay", "method_8510");
         MAPPINGS.put("getTime", "method_11871");
@@ -192,7 +192,7 @@ public class MappingHelper {
         MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
         MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
         MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
-        MAPPINGS.put("updateBlockBreakingProgress", is1214 ? "method_2910" : "method_2902");
+        MAPPINGS.put("updateBlockBreakingProgress", "method_2910");
         MAPPINGS.put("isBreakingBlock", "method_2923");
         MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
         MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
