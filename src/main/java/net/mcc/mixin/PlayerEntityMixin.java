@@ -51,7 +51,7 @@ public class PlayerEntityMixin {
                 } catch (Throwable ignored) {}
             }
 
-            // Undo 5x airborne mining speed reduction if in mid-air
+            // Remove 5x airborne mining speed reduction if in mid-air
             if (!onGround) {
                 speed *= 5.0f;
             }
@@ -73,7 +73,7 @@ public class PlayerEntityMixin {
                 }
             }
 
-            // Undo 5x underwater mining speed reduction if underwater
+            // Remove 5x underwater mining speed reduction if underwater
             if (submerged) {
                 speed *= 5.0f;
             }
