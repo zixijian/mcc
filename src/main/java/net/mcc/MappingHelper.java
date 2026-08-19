@@ -424,6 +424,7 @@ public class MappingHelper {
         if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
         if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); names.add("method_2902"); }
         if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
+        if (yarnName.equals("getBlockBreakingSpeed")) { names.add("method_7370"); names.add("method_7351"); }
         if (yarnName.equals("updateBlockBreakingProgress")) { names.add("method_2910"); names.add("method_2902"); }
         if (yarnName.equals("isBreakingBlock")) { names.add("method_2923"); names.add("method_2901"); }
         if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
