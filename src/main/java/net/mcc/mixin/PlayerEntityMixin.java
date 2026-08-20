@@ -14,43 +14,69 @@ public class PlayerEntityMixin {
     // Yarn named method
     @Inject(method = "getBlockBreakingSpeed(Lnet/minecraft/block/BlockState;)F", at = @At("RETURN"), cancellable = true, remap = false, require = 0)
     private void onGetBlockBreakingSpeedNamed(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
-        applyBuff(cir);
+        applyBuff(blockState, cir);
     }
 
     // Intermediary method
     @Inject(method = "method_7351(Lnet/minecraft/class_2680;)F", at = @At("RETURN"), cancellable = true, remap = false, require = 0)
     private void onGetBlockBreakingSpeedIntermediary(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
-        applyBuff(cir);
+        applyBuff(blockState, cir);
     }
 
-    private void applyBuff(CallbackInfoReturnable<Float> cir) {
+    private void applyBuff(Object blockState, CallbackInfoReturnable<Float> cir) {
         if (!AutomationManager.isBuffEnabled()) return;
 
-        float speed = cir.getReturnValue();
-        if (speed <= 0.0f) return;
+        float baseSpeed = cir.getReturnValue();
+        if (baseSpeed <= 0.0f) return;
 
-        // 1. 移除飞行/空中挖掘减速效果：如果玩家不在地面 (!isOnGround)，乘以 5.0f 抵消除以 5 的原生减速
-        boolean onGround = true;
+        float rawSpeed = -1.0f;
+
+        // 1. 直接从当前手持物品获取原生的工具基础挖掘速度 (例如钻石镐为 6.0f)
+        // 这一步完全绕过了 Minecraft 原生对空中 (airborne) 和水下 (underwater) 的 5 倍减速除法
         try {
-            onGround = (boolean) MappingHelper.invokeMethod(this, "isOnGround");
-        } catch (Exception e1) {
+            Object player = this;
+            Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+            if (inv != null) {
+                int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                Object main = MappingHelper.getFieldValue(inv, "main", null);
+                if (main instanceof java.util.List) {
+                    Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                    if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
+                        Object res = MappingHelper.invokeMethod(stack, "getMiningSpeedMultiplier", blockState);
+                        if (res instanceof Number) {
+                            rawSpeed = ((Number) res).floatValue();
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // 2. 兜底逻辑：若未能从 stack 拿到原始速度，则从 baseSpeed 还原空中 5 倍减速
+        if (rawSpeed < 0.0f) {
+            rawSpeed = baseSpeed;
+            boolean onGround = true;
             try {
-                onGround = (boolean) MappingHelper.getFieldValue(this, "field_6017", null);
-            } catch (Exception ignored) {}
+                onGround = (boolean) MappingHelper.invokeMethod(this, "isOnGround");
+            } catch (Exception e1) {
+                try {
+                    onGround = (boolean) MappingHelper.getFieldValue(this, "field_6017", null);
+                } catch (Exception ignored) {}
+            }
+            if (!onGround) {
+                rawSpeed *= 5.0f;
+            }
         }
 
-        if (!onGround) {
-            speed *= 5.0f;
+        // 3. 效率 5 (Efficiency 5): 工具匹配 (rawSpeed > 1.0f) 时，确保加上 +26.0f 附加值
+        if (rawSpeed > 1.0f) {
+            if (rawSpeed < 27.0f) {
+                rawSpeed += 26.0f;
+            }
         }
 
-        // 2. 效率 5 (Efficiency 5): 当工具匹配 (speed > 1.0f) 时，增加 26.0f 速度
-        if (speed > 1.0f) {
-            speed += 26.0f;
-        }
+        // 4. 信标急迫 2 (Haste 2): 速度乘以 1.4f (40% 提升)
+        rawSpeed *= 1.4f;
 
-        // 3. 信标急迫 2 (Haste 2): 速度乘以 1.4f (40% 提升)
-        speed *= 1.4f;
-
-        cir.setReturnValue(speed);
+        cir.setReturnValue(rawSpeed);
     }
 }

@@ -186,6 +186,7 @@ public class MappingHelper {
         MAPPINGS.put("getItem", "method_7909");
         MAPPINGS.put("getMaxDamage", "method_7936");
         MAPPINGS.put("getDamage", "method_7919");
+        MAPPINGS.put("getMiningSpeedMultiplier", "method_7924");
         MAPPINGS.put("requestRespawn", "method_7331");
         MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
         MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
@@ -445,6 +446,7 @@ public class MappingHelper {
         if (yarnName.equals("isEmpty")) { names.add("method_7960"); }
         if (yarnName.equals("getMaxDamage")) { names.add("method_7936"); }
         if (yarnName.equals("getDamage")) { names.add("method_7919"); }
+        if (yarnName.equals("getMiningSpeedMultiplier")) { names.add("method_7924"); }
 
         for (String name : names) {
             try { return invokeMethodInternal(targetObj, clazz, name, args); } catch (NoSuchMethodException ignored) {}
