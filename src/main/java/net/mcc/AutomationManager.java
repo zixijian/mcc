@@ -11,6 +11,7 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
     private static boolean singleRespawnTriggered = false;
+    private static boolean buffEnabled = false;
 
     private static int internalAttackTicks = 0;
     private static int waitTicksAfterHalfCharge = -1;
@@ -116,6 +117,27 @@ public class AutomationManager {
         CommandDispatcher.addFeedback("§a自动使用: " + (freq == -1 ? "关闭" : (freq == 0 ? "持续" : freq + " ticks")));
     }
 
+    public static void handleBuffCommand(String arg) {
+        if ("on".equals(arg)) {
+            buffEnabled = true;
+            CommandDispatcher.addFeedback("§aBuff: 开启");
+            return;
+        } else if ("off".equals(arg)) {
+            buffEnabled = false;
+            CommandDispatcher.addFeedback("§eBuff: 关闭");
+            return;
+        } else if (arg.isEmpty()) {
+            buffEnabled = !buffEnabled;
+            CommandDispatcher.addFeedback(buffEnabled ? "§aBuff: 开启" : "§eBuff: 关闭");
+            return;
+        }
+        CommandDispatcher.addFeedback("§c用法: /mcc buff [on|off]");
+    }
+
+    public static boolean isBuffEnabled() {
+        return buffEnabled;
+    }
+
     public static void handleRespawnCommand(String arg) {
         if ("on".equals(arg)) {
             autoRespawn = true;
@@ -191,7 +213,7 @@ public class AutomationManager {
 
     public static void showStatus() {
         String luseStr = luseCount == -2 ? "关闭" : (luseCount == -1 ? "持续" : luseCount + " 次");
-        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b", attackFreq, useFreq, luseStr, autoRespawn));
+        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b Buff:%b", attackFreq, useFreq, luseStr, autoRespawn, buffEnabled));
     }
 
     public static void probeMappings() {
