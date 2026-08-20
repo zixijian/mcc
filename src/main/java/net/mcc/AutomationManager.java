@@ -592,15 +592,20 @@ public class AutomationManager {
             Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
 
-            // 1. 显式触发 attackBlock (WorldGuard 标记的核心)
-            // 恢复同时调用模式，因为拆分逻辑导致标记失效
+            // 1. 显式触发 attackBlock 或 updateBlockBreakingProgress，防止持续方块破损被重置
             if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
                 if (im != null) {
                     try {
                         Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
                         Object side = MappingHelper.invokeMethod(target, "getSide");
                         if (pos != null && side != null) {
-                            MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            boolean isBreaking = false;
+                            try { isBreaking = (boolean) MappingHelper.invokeMethod(im, "isBreakingBlock"); } catch (Exception ignored) {}
+                            if (isBreaking) {
+                                MappingHelper.invokeMethod(im, "updateBlockBreakingProgress", pos, side);
+                            } else {
+                                MappingHelper.invokeMethod(im, "attackBlock", pos, side);
+                            }
                         }
                     } catch (Exception ignored) {}
                 }

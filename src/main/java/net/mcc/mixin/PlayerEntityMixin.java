@@ -27,10 +27,9 @@ public class PlayerEntityMixin {
         if (!AutomationManager.isBuffEnabled()) return;
 
         float speed = cir.getReturnValue();
+        if (speed <= 0.0f) return;
 
-        // 1. 优先处理空中/飞行减速：
-        // 原生 getBlockBreakingSpeed 如果检测到玩家不在地面 (!isOnGround)，会在返回前将速度除以 5.0f。
-        // 此处先乘以 5.0f 还原出地面基础挖掘速度，以保证工具匹配判定准确且避免属性加成被放大 5 倍。
+        // 1. 移除飞行/空中挖掘减速效果：如果玩家不在地面 (!isOnGround)，乘以 5.0f 抵消除以 5 的原生减速
         boolean onGround = true;
         try {
             onGround = (boolean) MappingHelper.invokeMethod(this, "isOnGround");
@@ -44,8 +43,8 @@ public class PlayerEntityMixin {
             speed *= 5.0f;
         }
 
-        // 2. 效率 5 (Efficiency 5): 当工具匹配 (speed > 1.0f) 且尚未包含效率 5 附加值 (speed < 27.0f) 时，增加 26.0f 速度
-        if (speed > 1.0f && speed < 27.0f) {
+        // 2. 效率 5 (Efficiency 5): 当工具匹配 (speed > 1.0f) 时，增加 26.0f 速度
+        if (speed > 1.0f) {
             speed += 26.0f;
         }
 
