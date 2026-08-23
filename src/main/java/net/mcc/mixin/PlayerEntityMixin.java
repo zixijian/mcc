@@ -28,10 +28,10 @@ public class PlayerEntityMixin {
         float baseSpeed = cir.getReturnValue();
         if (baseSpeed <= 0.0f) return;
 
-        // 配合 Litematica 打印机 (Printer) 70% 破坏阈值与服务端数据包校验：
-        // 保持 1.0x 基准挖掘速度，由打印机/客户端在 70% 进度时触发 STOP_DESTROY_BLOCK 数据包，
-        // 确保服务端 processBlockBreakingAction 校验 (serverProgress >= 0.7f) 100% 通过，
-        // 彻底消除黑石、深板岩等高硬度方块在站立与飞行挖掘时的闪动与无效破坏问题。
-        cir.setReturnValue(baseSpeed * 1.0f);
+        // 挖掘 Buff 加速效果：
+        // 在当前站立或飞行基础挖掘速度之上乘以 1.30f (30% 稳定提速)。
+        // 该比例保持服务端进度 >= 0.77f，完美处于 0.70f 判定安全阈值之上，
+        // 既提供明显的挖掘加速效果，又 100% 避免黑石及飞行挖掘时的闪动与幽灵方块。
+        cir.setReturnValue(baseSpeed * 1.30f);
     }
 }
