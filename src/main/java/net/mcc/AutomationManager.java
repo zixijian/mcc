@@ -11,6 +11,28 @@ public class AutomationManager {
     private static boolean useOnce = false;
     private static boolean autoRespawn = false;
     private static boolean singleRespawnTriggered = false;
+    private static boolean buffEnabled = false;
+
+    public static boolean isBuffEnabled() {
+        return buffEnabled;
+    }
+
+    public static void setBuffEnabled(boolean enabled) {
+        buffEnabled = enabled;
+    }
+
+    public static void handleBuffCommand(String arg) {
+        if ("on".equals(arg)) {
+            buffEnabled = true;
+            CommandDispatcher.addFeedback("§a挖掘Buff: 开启");
+        } else if ("off".equals(arg)) {
+            buffEnabled = false;
+            CommandDispatcher.addFeedback("§e挖掘Buff: 关闭");
+        } else {
+            buffEnabled = !buffEnabled;
+            CommandDispatcher.addFeedback(buffEnabled ? "§a挖掘Buff: 开启" : "§e挖掘Buff: 关闭");
+        }
+    }
 
     private static int internalAttackTicks = 0;
     private static int waitTicksAfterHalfCharge = -1;
@@ -191,7 +213,7 @@ public class AutomationManager {
 
     public static void showStatus() {
         String luseStr = luseCount == -2 ? "关闭" : (luseCount == -1 ? "持续" : luseCount + " 次");
-        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b", attackFreq, useFreq, luseStr, autoRespawn));
+        CommandDispatcher.addFeedback(String.format("§b[MCC] Atk:%d Use:%d Luse:%s Rsp:%b Buff:%b", attackFreq, useFreq, luseStr, autoRespawn, buffEnabled));
     }
 
     public static void probeMappings() {

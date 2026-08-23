@@ -153,13 +153,13 @@ public class ClientPlayNetworkHandlerMixin {
             String[] subcommands = {
                 "time", "hp", "xp", "tune", "tps", "list", "choose", "cs",
                 "slot", "tools", "drop", "attack", "atk", "use", "luse",
-                "respawn", "look", "status", "stop", "debug", "mapping"
+                "respawn", "buff", "look", "status", "stop", "debug", "mapping"
             };
 
             for (String sub : subcommands) {
                 Object subBuilder = literalMethod.invoke(null, sub);
-                if ("respawn".equals(sub)) {
-                    // 为 respawn 专门添加 "on" 和 "off" 的自动补全子项
+                if ("respawn".equals(sub) || "buff".equals(sub)) {
+                    // 为 respawn 和 buff 专门添加 "on" 和 "off" 的自动补全子项
                     Object onBuilder = literalMethod.invoke(null, "on");
                     Object offBuilder = literalMethod.invoke(null, "off");
                     thenMethod.invoke(subBuilder, onBuilder);
@@ -194,5 +194,53 @@ public class ClientPlayNetworkHandlerMixin {
         if (CommandDispatcher.dispatch("/" + command)) {
             ci.cancel();
         }
+    }
+
+    @Inject(method = {"sendPacket(Lnet/minecraft/network/packet/Packet;)V", "method_52787"}, at = @At("HEAD"), remap = false, require = 0)
+    private void onSendPacket(@Coerce Object packet, CallbackInfo ci) {
+        if (!net.mcc.AutomationManager.isBuffEnabled() || packet == null) {
+            return;
+        }
+
+        try {
+            String className = packet.getClass().getName();
+            if (className.contains("PlayerActionC2SPacket") || className.contains("class_2846")) {
+                Object action = null;
+                try {
+                    action = MappingHelper.invokeMethod(packet, "getAction");
+                } catch (Exception e) {
+                    try {
+                        action = MappingHelper.invokeMethod(packet, "method_12363");
+                    } catch (Exception ignored) {}
+                }
+
+                if (action != null) {
+                    String actionStr = String.valueOf(action);
+                    if (actionStr.contains("UPDATE") || actionStr.contains("START")) {
+                        Object client = CommandDispatcher.getClient();
+                        if (client != null) {
+                            Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                            Object player = CommandDispatcher.getClientPlayer();
+                            Object world = CommandDispatcher.getClientWorld();
+                            if (im != null && player != null && world != null) {
+                                Object pos = MappingHelper.invokeMethod(packet, "getPos");
+                                if (pos != null) {
+                                    Object blockState = MappingHelper.invokeMethod(world, "getBlockState", pos);
+                                    if (blockState != null) {
+                                        float delta = ((Number) MappingHelper.invokeMethod(blockState, "calcBlockBreakingDelta", player, world, pos)).floatValue();
+                                        if (delta > 0.0f) {
+                                            Float currProgress = (Float) MappingHelper.getFieldValue(im, "currentBreakingProgress", null);
+                                            if (currProgress != null && currProgress < delta) {
+                                                MappingHelper.setFieldValue(im, "currentBreakingProgress", delta);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 }
