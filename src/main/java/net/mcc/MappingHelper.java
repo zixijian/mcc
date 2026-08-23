@@ -153,6 +153,7 @@ public class MappingHelper {
         MAPPINGS.put("hurtTime", "field_6007");
         MAPPINGS.put("crosshairTarget", "field_1765");
         MAPPINGS.put("MAIN_HAND", "field_5808");
+        MAPPINGS.put("onGround", "field_12891");
 
         // 方法映射 (Yarn -> Intermediary)
         MAPPINGS.put("getInstance", "method_1551");
@@ -203,6 +204,7 @@ public class MappingHelper {
         MAPPINGS.put("getPitch", "method_36455");
         MAPPINGS.put("setYaw", "method_36456");
         MAPPINGS.put("setPitch", "method_36457");
+        MAPPINGS.put("isOnGround", "method_12273");
         MAPPINGS.put("getId", "method_10221");
         MAPPINGS.put("getCommandDispatcher", "method_2886");
         MAPPINGS.put("getRoot", "method_8257");
