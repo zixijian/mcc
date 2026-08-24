@@ -2,7 +2,12 @@ package net.mcc.mixin;
 
 import net.mcc.AutomationManager;
 import net.mcc.CommandDispatcher;
-import net.mcc.MappingHelper;
+import net.minecraft.block.BlockState;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -25,102 +30,88 @@ public class PlayerEntityMixin {
         remap = false,
         require = 0
     )
-    private void onGetBlockBreakingSpeed(@Coerce Object blockState, CallbackInfoReturnable<Float> cir) {
+    private void onGetBlockBreakingSpeed(@Coerce Object blockStateObj, CallbackInfoReturnable<Float> cir) {
         if (!AutomationManager.isBuffEnabled()) {
             return;
         }
 
         try {
-            float actualSpeed = cir.getReturnValueF();
+            float speed = cir.getReturnValueF();
+            if (speed <= 0.0f) return;
 
-            // 1. 如果玩家不在地面 (!isOnGround)，原版 getBlockBreakingSpeed 将速度除以 5.0。
-            // 因为我们在发包时向服务端伪装了 onGround = true，所以将 actualSpeed 乘回 5.0，还原地面实际挖掘速度。
-            boolean onGround = true;
-            try {
-                Object val = MappingHelper.invokeMethod(this, "isOnGround");
-                if (val instanceof Boolean) {
-                    onGround = (Boolean) val;
+            PlayerEntity player = (PlayerEntity) (Object) this;
+
+            // 1. 消除飞行/空中/游泳挖掘减速惩罚：
+            // 如果玩家不在地面 (!isOnGround)，原版 getBlockBreakingSpeed 将速度除以了 5.0f。
+            // 因此此处将其乘回 5.0f，将飞行/空中速度还原至地面挖掘速度。
+            if (!player.isOnGround()) {
+                speed *= 5.0f;
+            }
+
+            // 2. 按照“效率V (26倍) + 急迫II (1.4倍)”等效逻辑提升速度：
+            if (speed > 1.0f) {
+                if (speed < 27.0f) {
+                    speed += 26.0f;
                 }
-            } catch (Exception ignored) {}
-
-            if (!onGround) {
-                actualSpeed *= 5.0f;
+                speed *= 1.4f;
+            } else if (speed > 0.0f) {
+                speed *= 1.4f;
             }
 
-            if (actualSpeed <= 0.0f) {
-                return;
+            // 3. 理论最大合法上限约束 (53.2f)
+            if (speed > 53.2f) {
+                speed = 53.2f;
             }
 
-            // 2. 计算理想 Buff 速度 (效率V + 急迫II)
-            float buffedSpeed = actualSpeed;
-            if (buffedSpeed > 1.0f) {
-                if (buffedSpeed < 27.0f) {
-                    buffedSpeed += 26.0f;
-                }
-                buffedSpeed *= 1.4f;
-            } else {
-                buffedSpeed *= 1.4f;
-            }
-
-            // 限制在理论最大上限 53.2f 内
-            if (buffedSpeed > 53.2f) {
-                buffedSpeed = 53.2f;
-            }
-
-            // 3. 结合服务端 70% 破坏校验容忍度计算安全 Tick 周期，防止服务端因进度不足拒绝 STOP 数据包引发方块闪烁/回弹
-            Object client = CommandDispatcher.getClient();
-            if (client != null) {
-                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                    Object pos = MappingHelper.invokeMethod(target, "getBlockPos");
-                    Object world = CommandDispatcher.getClientWorld();
+            // 4. 结合服务端 70% 破坏校验容忍门槛计算安全 Tick 周期，防止服务端因进度不足拒绝 STOP 数据包引发方块闪烁/回弹
+            Object clientObj = CommandDispatcher.getClient();
+            if (clientObj != null) {
+                net.minecraft.client.MinecraftClient client = (net.minecraft.client.MinecraftClient) clientObj;
+                HitResult hit = client.crosshairTarget;
+                if (hit instanceof BlockHitResult blockHit) {
+                    BlockPos pos = blockHit.getBlockPos();
+                    World world = client.world;
                     if (pos != null && world != null) {
-                        Object targetState = MappingHelper.invokeMethod(world, "getBlockState", pos);
-                        if (targetState != null) {
-                            boolean isSuitable = false;
-                            try {
-                                isSuitable = (boolean) MappingHelper.invokeMethod(this, "canHarvest", targetState);
-                            } catch (Exception e) { isSuitable = true; }
-
+                        BlockState state = world.getBlockState(pos);
+                        if (state != null) {
+                            boolean isSuitable = player.canHarvest(state);
                             float divisor = isSuitable ? 30.0f : 100.0f;
-                            float hardness = 1.0f;
-                            try {
-                                Object block = MappingHelper.invokeMethod(targetState, "getBlock");
-                                hardness = ((Number) MappingHelper.getFieldValue(block, "hardness", null)).floatValue();
-                            } catch (Exception e) {
-                                try {
-                                    hardness = ((Number) MappingHelper.invokeMethod(targetState, "getHardness", world, pos)).floatValue();
-                                } catch (Exception ignored) {}
-                            }
+                            float hardness = state.getHardness(world, pos);
 
                             if (hardness > 0.0f) {
-                                float dActual = actualSpeed / hardness / divisor;
-                                float dBuffed = buffedSpeed / hardness / divisor;
+                                // 计算真实服务端单 Tick 进度增量 (基于原版未 Buff 的基础速度)
+                                float rawBaseSpeed = cir.getReturnValueF();
+                                float dServer = rawBaseSpeed / hardness / divisor;
 
-                                if (dBuffed >= 1.0f && dActual >= 0.70f) {
-                                    cir.setReturnValue(buffedSpeed);
-                                    return;
+                                if (dServer > 0.0f) {
+                                    // 服务端达到 0.70f 校验门槛所需的最小安全 Tick 数
+                                    int nSafe = (int) Math.ceil(0.70f / dServer);
+                                    if (nSafe < 1) nSafe = 1;
+
+                                    // 计算 Buff 加成后的单 Tick 增量
+                                    float dBuffed = speed / hardness / divisor;
+                                    int nBuffed = (int) Math.ceil(1.0f / dBuffed);
+                                    if (nBuffed < 1) nBuffed = 1;
+
+                                    // 最终安全周期：不能早于服务端的 nSafe 周期
+                                    int nFinal = Math.max(nBuffed, nSafe);
+
+                                    float finalDelta = 1.0f / nFinal;
+                                    float finalSpeed = finalDelta * hardness * divisor;
+
+                                    if (finalSpeed > speed) finalSpeed = speed;
+                                    if (finalSpeed > 0.0f) {
+                                        cir.setReturnValue(finalSpeed);
+                                        return;
+                                    }
                                 }
-
-                                int nActual = (int) Math.ceil(0.70f / dActual);
-                                int nBuffed = (int) Math.ceil(1.0f / dBuffed);
-                                int nSafe = Math.max(1, Math.max(nBuffed, nActual));
-
-                                float safeDelta = 1.0f / nSafe;
-                                float safeSpeed = safeDelta * hardness * divisor;
-
-                                if (safeSpeed < actualSpeed) safeSpeed = actualSpeed;
-                                if (safeSpeed > buffedSpeed) safeSpeed = buffedSpeed;
-
-                                cir.setReturnValue(safeSpeed);
-                                return;
                             }
                         }
                     }
                 }
             }
 
-            cir.setReturnValue(buffedSpeed);
+            cir.setReturnValue(speed);
         } catch (Throwable ignored) {}
     }
 }

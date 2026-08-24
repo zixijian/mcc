@@ -204,22 +204,6 @@ public class ClientPlayNetworkHandlerMixin {
 
         try {
             String className = packet.getClass().getName();
-            // 1. 移动数据包（PlayerMoveC2SPacket 及子类）：挖掘时伪装 onGround = true，消除服务端的 5 倍飞行减速惩罚
-            if (className.contains("PlayerMoveC2SPacket") || className.contains("class_2828")) {
-                Object client = CommandDispatcher.getClient();
-                if (client != null) {
-                    Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                    if (im != null) {
-                        Boolean isBreaking = (Boolean) MappingHelper.invokeMethod(im, "isBreakingBlock");
-                        if (Boolean.TRUE.equals(isBreaking)) {
-                            try { MappingHelper.setFieldValue(packet, "onGround", true); } catch (Exception ignored) {}
-                            try { MappingHelper.setFieldValue(packet, "field_12891", true); } catch (Exception ignored) {}
-                        }
-                    }
-                }
-            }
-
-            // 2. 挖掘数据包 (PlayerActionC2SPacket) 进度同步
             if (className.contains("PlayerActionC2SPacket") || className.contains("class_2846")) {
                 Object action = null;
                 try {
@@ -233,21 +217,19 @@ public class ClientPlayNetworkHandlerMixin {
                 if (action != null) {
                     String actionStr = String.valueOf(action);
                     if (actionStr.contains("UPDATE") || actionStr.contains("START")) {
-                        Object client = CommandDispatcher.getClient();
-                        if (client != null) {
-                            Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                            Object player = CommandDispatcher.getClientPlayer();
-                            Object world = CommandDispatcher.getClientWorld();
-                            if (im != null && player != null && world != null) {
+                        Object clientObj = CommandDispatcher.getClient();
+                        if (clientObj != null) {
+                            net.minecraft.client.MinecraftClient client = (net.minecraft.client.MinecraftClient) clientObj;
+                            if (client.interactionManager != null && client.player != null && client.world != null) {
                                 Object pos = MappingHelper.invokeMethod(packet, "getPos");
-                                if (pos != null) {
-                                    Object blockState = MappingHelper.invokeMethod(world, "getBlockState", pos);
+                                if (pos instanceof net.minecraft.util.math.BlockPos blockPos) {
+                                    net.minecraft.block.BlockState blockState = client.world.getBlockState(blockPos);
                                     if (blockState != null) {
-                                        float delta = ((Number) MappingHelper.invokeMethod(blockState, "calcBlockBreakingDelta", player, world, pos)).floatValue();
+                                        float delta = blockState.calcBlockBreakingDelta(client.player, client.world, blockPos);
                                         if (delta > 0.0f) {
-                                            Float currProgress = (Float) MappingHelper.getFieldValue(im, "currentBreakingProgress", null);
+                                            Float currProgress = (Float) MappingHelper.getFieldValue(client.interactionManager, "currentBreakingProgress", null);
                                             if (currProgress != null && currProgress < delta) {
-                                                MappingHelper.setFieldValue(im, "currentBreakingProgress", delta);
+                                                MappingHelper.setFieldValue(client.interactionManager, "currentBreakingProgress", delta);
                                             }
                                         }
                                     }
