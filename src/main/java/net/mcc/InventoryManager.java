@@ -35,12 +35,26 @@ public class InventoryManager {
                     }
                 } catch (Exception ignored) {}
 
-                // 2. 尝试手动发送 UpdateSelectedSlotC2SPacket
+                // 2. 尝试手动发送 UpdateSelectedSlotC2SPacket / ServerboundSetCarriedItemPacket
                 try {
-                    Class<?> packetClass = MappingHelper.getClass("net/minecraft/class_2868"); // UpdateSelectedSlotC2SPacket
-                    Object packet = packetClass.getConstructor(int.class).newInstance(slot);
-                    // method_10743 = sendPacket (ClientPlayNetworkHandler)
-                    MappingHelper.invokeMethod(nh, "method_10743", packet);
+                    Class<?> packetClass = null;
+                    try { packetClass = MappingHelper.getClass("UpdateSelectedSlotC2SPacket"); } catch (Exception ignored) {}
+                    if (packetClass == null) {
+                        try { packetClass = MappingHelper.getClass("net/minecraft/class_2868"); } catch (Exception ignored) {}
+                    }
+                    if (packetClass == null) {
+                        try { packetClass = Class.forName("net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket"); } catch (Exception ignored) {}
+                    }
+                    if (packetClass != null) {
+                        Object packet = packetClass.getConstructor(int.class).newInstance(slot);
+                        try {
+                            MappingHelper.invokeMethod(nh, "send", packet);
+                        } catch (Exception e1) {
+                            try { MappingHelper.invokeMethod(nh, "sendPacket", packet); } catch (Exception e2) {
+                                MappingHelper.invokeMethod(nh, "method_10743", packet);
+                            }
+                        }
+                    }
                 } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}

@@ -7,35 +7,33 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.Coerce;
 
 import java.lang.reflect.Method;
 
-@Mixin(targets = "net.minecraft.class_634") // ClientPlayNetworkHandler
+@Mixin(targets = "net.minecraft.client.multiplayer.ClientPacketListener")
 public class ClientPlayNetworkHandlerMixin {
 
     // onWorldTimeUpdate
-    @Inject(method = "method_11079", at = @At("HEAD"), remap = false, require = 0)
+    @Inject(method = {"handleSetTime", "onWorldTimeUpdate", "method_11079"}, at = @At("HEAD"), remap = false, require = 0)
     private void onWorldTimeUpdate(@Coerce Object packet, CallbackInfo ci) {
         try {
             long gameTime = -1;
-            long dayTime = -2; // 使用 -2 作为未初始化的标志，因为 -1 在 dayTime 中有意义 (冻结时间)
+            long dayTime = -2;
 
-            // 策略 1: 属性读取 (Record or Class)
             try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "gameTime")).longValue(); } catch (Exception ignored) {}
             try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "dayTime")).longValue(); } catch (Exception ignored) {}
 
             if (gameTime == -1) {
-                try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "method_11871")).longValue(); } catch (Exception ignored) {}
+                try { gameTime = ((Number) MappingHelper.invokeMethod(packet, "getGameTime")).longValue(); } catch (Exception ignored) {}
             }
             if (dayTime == -2) {
-                try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "method_11870")).longValue(); } catch (Exception ignored) {}
+                try { dayTime = ((Number) MappingHelper.invokeMethod(packet, "getDayTime")).longValue(); } catch (Exception ignored) {}
             }
 
-            // 策略 2: 暴力查找 long 字段 (WorldTimeUpdateS2CPacket 通常有两个 long 字段: gameTime, dayTime)
             if (gameTime == -1 || dayTime == -2) {
                 java.util.List<Long> longFields = new java.util.ArrayList<>();
-                // 如果是 Record 类型，优先遍历 RecordComponents (1.21.2+)
                 if (packet.getClass().isRecord()) {
                     for (java.lang.reflect.RecordComponent rc : packet.getClass().getRecordComponents()) {
                         if (rc.getType() == long.class) {
@@ -44,7 +42,6 @@ public class ClientPlayNetworkHandlerMixin {
                     }
                 }
 
-                // 无论是否是 Record，都扫描字段作为兜底
                 if (longFields.size() < 2) {
                     for (java.lang.reflect.Field f : packet.getClass().getDeclaredFields()) {
                         if (f.getType() == long.class && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
@@ -65,7 +62,6 @@ public class ClientPlayNetworkHandlerMixin {
             if (gameTime != -1 && dayTime != -2) {
                 PerformanceMonitor.onWorldTimeUpdate(gameTime, dayTime);
             } else if (gameTime != -1 || dayTime != -2) {
-                // 容错：如果只拿到了一个，至少同步一个
                 long finalGame = gameTime != -1 ? gameTime : PerformanceMonitor.getLastGameTime();
                 long finalDay = dayTime != -2 ? dayTime : PerformanceMonitor.getLastDayTime();
                 if (finalGame != -1 && finalDay != -2) {
@@ -75,45 +71,15 @@ public class ClientPlayNetworkHandlerMixin {
         } catch (Exception e) {}
     }
 
-    // onCommandTree (1.21.1 - method_11100)
-    @Inject(method = "method_11100", at = @At("TAIL"), remap = false, require = 0)
-    private void onCommandTree1211(@Coerce Object packet, CallbackInfo ci) {
+    // handleCommands / onCommandTree
+    @Inject(method = {"handleCommands", "onCommandTree", "method_11100", "method_11145", "method_64361"}, at = @At("TAIL"), remap = false, require = 0)
+    private void onCommandTree(@Coerce Object packet, CallbackInfo ci) {
         injectMccNode(this);
     }
 
-    // onCommandTree (1.21.2 - method_11100 with different descriptor)
-    @Inject(method = "method_11100(Lnet/minecraft/class_2633;)V", at = @At("TAIL"), remap = false, require = 0)
-    private void onCommandTree1212(@Coerce Object packet, CallbackInfo ci) {
-        injectMccNode(this);
-    }
-
-    // onCommandTree (1.21.4 - method_11145)
-    @Inject(method = "method_11145", at = @At("TAIL"), remap = false, require = 0)
-    private void onCommandTree1214(@Coerce Object packet, CallbackInfo ci) {
-        injectMccNode(this);
-    }
-
-    // onCommandTree (1.21.4+ - method_64361)
-    @Inject(method = "method_64361", at = @At("TAIL"), remap = false, require = 0)
-    private void onCommandTree1214Plus(@Coerce Object packet, CallbackInfo ci) {
-        injectMccNode(this);
-    }
-
-    // 针对 1.21.1/1.21.4+ 的 getChatSuggestions (method_9259)
-    @Inject(method = "method_9259", at = @At("TAIL"), remap = false, require = 0)
+    // getCustomSuggestions / getChatSuggestions
+    @Inject(method = {"getCustomSuggestions", "getChatSuggestions", "method_9259", "method_63852"}, at = @At("HEAD"), remap = false, require = 0)
     private void onGetChatSuggestions(CallbackInfo ci) {
-        injectMccNode(this);
-    }
-
-    // 拦截 ClientCommandSource 相关的建议请求
-    @Inject(method = "method_9259", at = @At("HEAD"), remap = false, require = 0)
-    private void onGetChatSuggestionsPre(CallbackInfo ci) {
-        injectMccNode(this);
-    }
-
-    // getChatSuggestions (1.21.4+ - method_63852)
-    @Inject(method = "method_63852", at = @At("HEAD"), remap = false, require = 0)
-    private void onGetChatSuggestions1214Plus(CallbackInfo ci) {
         injectMccNode(this);
     }
 
@@ -123,14 +89,16 @@ public class ClientPlayNetworkHandlerMixin {
             try {
                 dispatcher = MappingHelper.invokeMethod(handler, "getCommandDispatcher");
             } catch (Exception e) {
-                // 1.21.1 fallback: field_3696
                 try {
-                    dispatcher = MappingHelper.getFieldValue(handler, "field_3696", null);
+                    dispatcher = MappingHelper.getFieldValue(handler, "commands", null);
                 } catch (Exception ignored1) {
-                    // 1.21.4+ fallback: field_3691
                     try {
-                        dispatcher = MappingHelper.getFieldValue(handler, "field_3691", null);
-                    } catch (Exception ignored2) {}
+                        dispatcher = MappingHelper.getFieldValue(handler, "field_3696", null);
+                    } catch (Exception ignored2) {
+                        try {
+                            dispatcher = MappingHelper.getFieldValue(handler, "field_3691", null);
+                        } catch (Exception ignored3) {}
+                    }
                 }
             }
             if (dispatcher == null) return;
@@ -149,7 +117,6 @@ public class ClientPlayNetworkHandlerMixin {
             Object mccBuilder = literalMethod.invoke(null, "mcc");
             Object greedyType = greedyMethod.invoke(null);
 
-            // 注册所有子命令支持自动补全和输入合法性
             String[] subcommands = {
                 "time", "hp", "xp", "tune", "tps", "list", "choose", "cs",
                 "slot", "tools", "drop", "attack", "atk", "use", "luse",
@@ -159,7 +126,6 @@ public class ClientPlayNetworkHandlerMixin {
             for (String sub : subcommands) {
                 Object subBuilder = literalMethod.invoke(null, sub);
                 if ("respawn".equals(sub)) {
-                    // 为 respawn 专门添加 "on" 和 "off" 的自动补全子项
                     Object onBuilder = literalMethod.invoke(null, "on");
                     Object offBuilder = literalMethod.invoke(null, "off");
                     thenMethod.invoke(subBuilder, onBuilder);
@@ -170,7 +136,6 @@ public class ClientPlayNetworkHandlerMixin {
                 thenMethod.invoke(mccBuilder, subBuilder);
             }
 
-            // 添加直接挂在/mcc下的贪婪兜底，确保 /mcc 后面带任意未知参数时也保持合法性
             Object fallbackArgBuilder = argumentMethod.invoke(null, "args", greedyType);
             thenMethod.invoke(mccBuilder, fallbackArgBuilder);
 
@@ -182,14 +147,21 @@ public class ClientPlayNetworkHandlerMixin {
         } catch (Exception e) {}
     }
 
-    @Inject(method = "method_45730(Ljava/lang/String;)V", at = @At("HEAD"), cancellable = true, remap = false, require = 0) // sendCommand
-    private void onSendCommand(String command, CallbackInfo ci) {
+    @Inject(method = {"sendCommand(Ljava/lang/String;)V", "method_45730"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    private void onSendCommandVoid(String command, CallbackInfo ci) {
         if (CommandDispatcher.dispatch("/" + command)) {
             ci.cancel();
         }
     }
 
-    @Inject(method = "method_45729(Ljava/lang/String;)V", at = @At("HEAD"), cancellable = true, remap = false, require = 0) // sendChatCommand
+    @Inject(method = {"sendCommand(Ljava/lang/String;)Z"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    private void onSendCommandBoolean(String command, CallbackInfoReturnable<Boolean> cir) {
+        if (CommandDispatcher.dispatch("/" + command)) {
+            cir.setReturnValue(true);
+        }
+    }
+
+    @Inject(method = {"sendChatCommand", "sendUnsignedCommand", "method_45729"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void onSendChatCommand(String command, CallbackInfo ci) {
         if (CommandDispatcher.dispatch("/" + command)) {
             ci.cancel();
