@@ -457,11 +457,11 @@ public class AutomationManager {
                                     String sid = item.toString().toLowerCase();
                                     boolean isTridentClass = false;
                                     try {
-                                        Class<?> tridentClass = Class.forName("net.minecraft.class_1835");
+                                        Class<?> tridentClass = Class.forName("net.minecraft.world.item.TridentItem");
                                         if (tridentClass.isInstance(item)) isTridentClass = true;
                                     } catch (Exception ignored) {}
                                     try {
-                                        Class<?> tridentClass = Class.forName("net.minecraft.item.TridentItem");
+                                        Class<?> tridentClass = Class.forName("net.minecraft.class_1835");
                                         if (tridentClass.isInstance(item)) isTridentClass = true;
                                     } catch (Exception ignored) {}
 
@@ -511,14 +511,6 @@ public class AutomationManager {
                             } catch (Exception ignored) {}
                         }
 
-                        // 兜底触发 triggerItemUse 以防止某些物品或服务端未响应 interactItem
-                        try {
-                            isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
-                            if (!isUsing) {
-                                triggerItemUse(client, player);
-                            }
-                        } catch (Exception ignored) {}
-
                         luseStage = 1;
                         luseActiveTicks = 0;
                         luseStarted = false;
@@ -536,20 +528,22 @@ public class AutomationManager {
                         boolean finishConsume = false;
                         if (!isBow) {
                             if (luseStarted) {
-                                // 已经开始进食/使用，确保在持续足够时长(>=12 ticks)且不再处于使用状态或堆叠减少时才完成
-                                if ((!isUsing && luseActiveTicks >= 12) || isLuseStackChanged(player) || luseActiveTicks >= 40) {
+                                if ((!isUsing && luseActiveTicks >= 5) || isLuseStackChanged(player)) {
                                     finishConsume = true;
                                 }
                             } else {
-                                // 尚未探测到 isUsing，保持按住至堆叠改变或 25 ticks 安全超时
-                                if (isLuseStackChanged(player) || luseActiveTicks >= 25) {
+                                if (isLuseStackChanged(player) || luseActiveTicks >= 20) {
                                     finishConsume = true;
                                 }
+                            }
+                        } else {
+                            if (luseActiveTicks >= maxHoldTicks) {
+                                finishConsume = true;
                             }
                         }
 
                         // 判定单次使用动作完成或中断的条件
-                        if (finishConsume || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
+                        if (finishConsume || luseActiveTicks > 100) {
                             luseReleaseKey(client, "key.use");
                             luseStage = 2;
                             luseDelayTicks = 0;
