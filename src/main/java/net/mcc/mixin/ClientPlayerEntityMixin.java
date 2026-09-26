@@ -5,59 +5,34 @@ import net.mcc.AutomationManager;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * 拦截客户端发送的命令并处理 Tick
- */
-@Mixin(targets = "net.minecraft.class_746") // ClientPlayerEntity
+@Mixin(targets = "net.minecraft.client.player.LocalPlayer")
 public class ClientPlayerEntityMixin {
 
-    // tick (1.21.1)
-    @Inject(method = "method_3110", at = @At("HEAD"), remap = false, require = 0)
+    @Inject(method = {"tick", "method_3110", "method_5773"}, at = @At("HEAD"), remap = false, require = 0)
     private void onTickPre(CallbackInfo ci) {
         AutomationManager.onClientTick();
     }
 
-    // tick (1.21.2+)
-    @Inject(method = "method_5773", at = @At("HEAD"), remap = false, require = 0)
-    private void onTickPreNew(CallbackInfo ci) {
-        AutomationManager.onClientTick();
-    }
-
-
-    // 1.21.1 sendCommand (返回 boolean)
-    @Inject(method = "method_3111(Ljava/lang/String;)Z", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
-    private void onSendCommand1211(String command, CallbackInfoReturnable<Boolean> cir) {
-        if (CommandDispatcher.dispatch("/" + command)) {
-            cir.setReturnValue(true);
-        }
-    }
-
-    // 1.21.2+ sendCommand (返回 void)
-    @Inject(method = "method_63668(Ljava/lang/String;)V", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
-    private void onSendCommand1212(String command, CallbackInfo ci) {
+    @Inject(method = {"sendCommand(Ljava/lang/String;)V", "method_63668"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    private void onSendCommandVoid(String command, CallbackInfo ci) {
         if (CommandDispatcher.dispatch("/" + command)) {
             ci.cancel();
         }
     }
 
-    // 1.21.1 sendChatMessage (返回 void)
-    @Inject(method = "method_3143(Ljava/lang/String;Lnet/minecraft/class_2561;)V", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
-    private void onSendChatMessage1211(String message, @Coerce Object component, CallbackInfo ci) {
-        if (message.startsWith("/mcc")) {
-            if (CommandDispatcher.dispatch(message)) {
-                ci.cancel();
-            }
+    @Inject(method = {"sendCommand(Ljava/lang/String;)Z", "method_3111"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    private void onSendCommandBoolean(String command, CallbackInfoReturnable<Boolean> cir) {
+        if (CommandDispatcher.dispatch("/" + command)) {
+            cir.setReturnValue(true);
         }
     }
 
-    // 1.21.2+ sendChatMessage (返回 void)
-    @Inject(method = "method_63667(Ljava/lang/String;Lnet/minecraft/class_2561;)V", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
-    private void onSendChatMessage1212(String message, @Coerce Object component, CallbackInfo ci) {
-        if (message.startsWith("/mcc")) {
+    @Inject(method = {"sendChat", "chat", "sendChatMessage", "method_3143", "method_63667"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    private void onSendChatMessage(String message, CallbackInfo ci) {
+        if (message != null && message.startsWith("/mcc")) {
             if (CommandDispatcher.dispatch(message)) {
                 ci.cancel();
             }

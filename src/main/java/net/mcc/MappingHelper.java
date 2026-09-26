@@ -8,229 +8,143 @@ import java.util.Map;
 
 /**
  * 终极健壮性零链接反射工具类。
- * 内置全量 1.21.x 核心成员映射，支持自动化、监控及命令系统。
+ * 全量适配 Mojang 官方 26.x (26.1, 26.2, 26.3) 原生命名与旧版混淆兼容。
  */
 public class MappingHelper {
     private static final Map<String, String> MAPPINGS = new HashMap<>();
     private static final Map<String, Class<?>> CLASS_CACHE = new HashMap<>();
     private static final Class<?> NOT_FOUND_MARKER = Void.class;
-    public static boolean is1214 = false;
+    public static boolean is26Plus = true;
 
     static {
-        // 1. 优先采用 Fabric Loader API 获取并解析真实的 Minecraft 版本
-        try {
-            Class<?> flClass = Class.forName("net.fabricmc.loader.api.FabricLoader");
-            Object flInstance = flClass.getMethod("getInstance").invoke(null);
-            Object mcModOpt = flClass.getMethod("getModContainer", String.class).invoke(flInstance, "minecraft");
-            if (mcModOpt != null) {
-                java.util.Optional<?> opt = (java.util.Optional<?>) mcModOpt;
-                if (opt.isPresent()) {
-                    Object mcMod = opt.get();
-                    Object metadata = mcMod.getClass().getMethod("getMetadata").invoke(mcMod);
-                    Object versionObj = metadata.getClass().getMethod("getVersion").invoke(metadata);
-                    String version = (String) versionObj.getClass().getMethod("getFriendlyString").invoke(versionObj);
-                    if (version != null) {
-                        String[] parts = version.split("\\.");
-                        if (parts.length >= 2) {
-                            int major = Integer.parseInt(parts[1].replaceAll("[^0-9]", ""));
-                            if (major > 21) {
-                                is1214 = true;
-                            } else if (major == 21 && parts.length >= 3) {
-                                int minor = Integer.parseInt(parts[2].replaceAll("[^0-9]", ""));
-                                if (minor >= 4) {
-                                    is1214 = true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Throwable ignored) {}
+        // 类名映射 (Yarn / Intermediary -> Mojang Official Native)
+        MAPPINGS.put("MinecraftClient", "net.minecraft.client.Minecraft");
+        MAPPINGS.put("ClientPlayerEntity", "net.minecraft.client.player.LocalPlayer");
+        MAPPINGS.put("PlayerEntity", "net.minecraft.world.entity.player.Player");
+        MAPPINGS.put("LivingEntity", "net.minecraft.world.entity.LivingEntity");
+        MAPPINGS.put("HungerManager", "net.minecraft.world.food.FoodData");
+        MAPPINGS.put("PlayerInventory", "net.minecraft.world.entity.player.Inventory");
+        MAPPINGS.put("ItemStack", "net.minecraft.world.item.ItemStack");
+        MAPPINGS.put("Text", "net.minecraft.network.chat.Component");
+        MAPPINGS.put("ClientPlayNetworkHandler", "net.minecraft.client.multiplayer.ClientPacketListener");
+        MAPPINGS.put("ClientWorld", "net.minecraft.client.multiplayer.ClientLevel");
+        MAPPINGS.put("PlayerListEntry", "net.minecraft.client.multiplayer.PlayerInfo");
+        MAPPINGS.put("Registries", "net.minecraft.core.registries.BuiltInRegistries");
+        MAPPINGS.put("Registry", "net.minecraft.core.Registry");
+        MAPPINGS.put("Identifier", "net.minecraft.resources.ResourceLocation");
+        MAPPINGS.put("GameOptions", "net.minecraft.client.Options");
+        MAPPINGS.put("KeyBinding", "net.minecraft.client.KeyMapping");
+        MAPPINGS.put("Input", "net.minecraft.client.player.Input");
+        MAPPINGS.put("Team", "net.minecraft.world.scores.PlayerTeam");
+        MAPPINGS.put("Style", "net.minecraft.network.chat.Style");
+        MAPPINGS.put("TextColor", "net.minecraft.network.chat.TextColor");
+        MAPPINGS.put("LevelProperties", "net.minecraft.world.level.storage.PrimaryLevelData");
+        MAPPINGS.put("Entity", "net.minecraft.world.entity.Entity");
+        MAPPINGS.put("EntityHitResult", "net.minecraft.world.phys.EntityHitResult");
+        MAPPINGS.put("BlockHitResult", "net.minecraft.world.phys.BlockHitResult");
+        MAPPINGS.put("Hand", "net.minecraft.world.InteractionHand");
+        MAPPINGS.put("Screen", "net.minecraft.client.gui.screens.Screen");
+        MAPPINGS.put("FishingRodItem", "net.minecraft.world.item.FishingRodItem");
 
-        // 2. 兜底反射策略 A: 探测 MinecraftClient 字段类型变化 (1.21.4+ 具有 int 类型的 field_1755 或 field_1752)
-        if (!is1214) {
-            try {
-                Class<?> mc = Class.forName("net.minecraft.class_310");
-                try {
-                    Field f = mc.getDeclaredField("field_1755");
-                    // 1.21.1 下 field_1755 是 Screen 类型，1.21.4+ 下是 int 类型 (attackCooldown)
-                    if (f.getType() == int.class) {
-                        is1214 = true;
-                    }
-                } catch (Throwable ignored) {}
+        // 字段映射 (Yarn / Intermediary -> Mojang Official Native)
+        MAPPINGS.put("player", "player");
+        MAPPINGS.put("world", "level");
+        MAPPINGS.put("options", "options");
+        MAPPINGS.put("networkHandler", "connection");
+        MAPPINGS.put("interactionManager", "gameMode");
+        MAPPINGS.put("playerListEntries", "playerInfoMap");
+        MAPPINGS.put("inventory", "inventory");
+        MAPPINGS.put("hungerManager", "foodData");
+        MAPPINGS.put("foodLevel", "foodLevel");
+        MAPPINGS.put("prevFoodLevel", "lastFoodLevel");
+        MAPPINGS.put("experienceLevel", "experienceLevel");
+        MAPPINGS.put("experienceProgress", "experienceProgress");
+        MAPPINGS.put("totalExperience", "totalExperience");
+        MAPPINGS.put("selectedSlot", "selectedSlot");
+        MAPPINGS.put("currentScreen", "screen");
+        MAPPINGS.put("main", "items");
+        MAPPINGS.put("input", "input");
+        MAPPINGS.put("attackKey", "keyAttack");
+        MAPPINGS.put("useKey", "keyUse");
+        MAPPINGS.put("pressed", "isDown");
+        MAPPINGS.put("attackCooldown", "missTime");
+        MAPPINGS.put("itemUseCooldown", "rightClickDelay");
+        MAPPINGS.put("ITEM", "ITEM");
+        MAPPINGS.put("lastAttackedTicks", "attackStrengthTicker");
+        MAPPINGS.put("hurtResistantTime", "invulnerableTime");
+        MAPPINGS.put("hurtTime", "hurtTime");
+        MAPPINGS.put("crosshairTarget", "hitResult");
+        MAPPINGS.put("MAIN_HAND", "MAIN_HAND");
 
-                if (!is1214) {
-                    try {
-                        Field f2 = mc.getDeclaredField("field_1752");
-                        // 1.21.1 下 field_1752 是 int 类型 (attackCooldown)，
-                        // 但在 1.21.4+ 下 field_1752 依然是 int 类型 (itemUseCooldown)。
-                        // 故仅作为辅助验证。
-                        if (f2.getType() == int.class) {
-                            // 为了严谨性，仅当 field_1755 无法被获取（如混淆环境且 fallback 块执行）时才通过该项补充
-                            is1214 = true;
-                        }
-                    } catch (Throwable ignored) {}
-                }
-            } catch (Throwable ignored) {}
-        }
-
-        // 3. 兜底反射策略 B: 检查 ClientPlayNetworkHandler 1.21.4+ 特异性字段和方法
-        if (!is1214) {
-            try {
-                Class<?> cph = Class.forName("net.minecraft.class_634");
-                try {
-                    // field_52609 为 1.21.4+ 新增的 playerListEntries 字段
-                    cph.getDeclaredField("field_52609");
-                    is1214 = true;
-                } catch (Throwable ignored) {}
-
-                if (!is1214) {
-                    try {
-                        // method_2883 为 1.21.11 等特异增加的方法名
-                        cph.getDeclaredMethod("method_2883");
-                        is1214 = true;
-                    } catch (Throwable ignored) {}
-                }
-            } catch (Throwable ignored) {}
-        }
-
-        // 类名映射
-        MAPPINGS.put("MinecraftClient", "net/minecraft/class_310");
-        MAPPINGS.put("ClientPlayerEntity", "net/minecraft/class_746");
-        MAPPINGS.put("PlayerEntity", "net/minecraft/class_1657");
-        MAPPINGS.put("LivingEntity", "net/minecraft/class_1309");
-        MAPPINGS.put("HungerManager", "net/minecraft/class_1702");
-        MAPPINGS.put("PlayerInventory", "net/minecraft/class_1661");
-        MAPPINGS.put("ItemStack", "net/minecraft/class_1799");
-        MAPPINGS.put("Text", "net/minecraft/class_2561");
-        MAPPINGS.put("ClientPlayNetworkHandler", "net/minecraft/class_634");
-        MAPPINGS.put("ClientWorld", "net/minecraft/class_638");
-        MAPPINGS.put("PlayerListEntry", "net/minecraft/class_640");
-        MAPPINGS.put("Registries", "net/minecraft/class_7923");
-        MAPPINGS.put("Registry", "net/minecraft/class_2378");
-        MAPPINGS.put("Identifier", "net/minecraft/class_2960");
-        MAPPINGS.put("GameOptions", "net/minecraft/class_315");
-        MAPPINGS.put("KeyBinding", "net/minecraft/class_304");
-        MAPPINGS.put("Input", "net/minecraft/class_744");
-        MAPPINGS.put("Team", "net/minecraft/class_268");
-        MAPPINGS.put("Style", "net/minecraft/class_2583");
-        MAPPINGS.put("TextColor", "net/minecraft/class_5251");
-        MAPPINGS.put("LevelProperties", "net/minecraft/class_31");
-        MAPPINGS.put("Entity", "net/minecraft/class_1297");
-        MAPPINGS.put("EntityHitResult", "net/minecraft/class_3966");
-        MAPPINGS.put("BlockHitResult", "net/minecraft/class_3965");
-        MAPPINGS.put("Hand", "net/minecraft/class_1268");
-        MAPPINGS.put("Screen", "net/minecraft/class_437");
-        MAPPINGS.put("FishingRodItem", "net/minecraft/class_1787");
-
-        // 字段映射 (Yarn -> Intermediary)
-        MAPPINGS.put("player", "field_1724");
-        MAPPINGS.put("world", "field_1687");
-        MAPPINGS.put("options", "field_1690");
-        MAPPINGS.put("networkHandler", "field_1769");
-        MAPPINGS.put("interactionManager", "field_1761");
-        MAPPINGS.put("playerListEntries", is1214 ? "field_52609" : "field_3695");
-        MAPPINGS.put("inventory", "field_7514");
-        MAPPINGS.put("hungerManager", "field_7509");
-        MAPPINGS.put("foodLevel", "field_7496");
-        MAPPINGS.put("prevFoodLevel", "field_7497");
-        MAPPINGS.put("experienceLevel", "field_7520");
-        MAPPINGS.put("experienceProgress", "field_7510");
-        MAPPINGS.put("totalExperience", "field_7521");
-        MAPPINGS.put("selectedSlot", "field_7545");
-        MAPPINGS.put("currentScreen", is1214 ? "field_1757" : "field_1755");
-        MAPPINGS.put("main", "field_7547");
-        MAPPINGS.put("input", "field_3913");
-        MAPPINGS.put("attackKey", "field_1904");
-        MAPPINGS.put("useKey", "field_1886");
-        MAPPINGS.put("pressed", "field_1653");
-        MAPPINGS.put("gameProfile", "field_3944");
-        MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
-        MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
-        MAPPINGS.put("ITEM", "field_41178");
-        MAPPINGS.put("lastAttackedTicks", "field_6010");
-        MAPPINGS.put("hurtResistantTime", "field_6008");
-        MAPPINGS.put("hurtTime", "field_6007");
-        MAPPINGS.put("crosshairTarget", "field_1765");
-        MAPPINGS.put("MAIN_HAND", "field_5808");
-
-        // 方法映射 (Yarn -> Intermediary)
-        MAPPINGS.put("getInstance", "method_1551");
-        MAPPINGS.put("getSession", "method_1548");
-        MAPPINGS.put("getUsername", "method_1676");
-        MAPPINGS.put("getNetworkHandler", "method_1562");
-        MAPPINGS.put("getHealth", "method_6032");
-        MAPPINGS.put("getMaxHealth", "method_6063");
-        MAPPINGS.put("getHungerManager", "method_6122");
-        MAPPINGS.put("getFoodLevel", "method_7586");
-        MAPPINGS.put("getTimeOfDay", "method_8510");
-        MAPPINGS.put("getTime", "method_11871");
-        MAPPINGS.put("gameTime", is1214 ? "comp_2190" : "method_11871");
-        MAPPINGS.put("dayTime", is1214 ? "comp_2191" : "method_11870");
-        MAPPINGS.put("itemUseCooldown", is1214 ? "field_1752" : "field_1753");
-        MAPPINGS.put("attackCooldown", is1214 ? "field_1755" : "field_1752");
-        MAPPINGS.put("fishHook", is1214 ? "field_54930" : "field_7500");
-        MAPPINGS.put("keysById", "field_1655"); // KeyBinding.keysById
-        MAPPINGS.put("translationKey", "field_1654"); // KeyBinding.translationKey
-        MAPPINGS.put("literal", "method_43471");
-        MAPPINGS.put("sendMessage", "method_7353");
-        MAPPINGS.put("getPlayerList", "method_2871"); // 获取玩家列表 Collection
-        MAPPINGS.put("getPlayerListEntries", "method_31363"); // 获取玩家列表 entries
-        MAPPINGS.put("getRegistryEntry", "method_40223");
-        MAPPINGS.put("getProfile", "method_2966");
-        MAPPINGS.put("getDisplayName", "method_2963");
-        MAPPINGS.put("getName", "getName"); // GameProfile.getName
-        MAPPINGS.put("getString", "method_10851");
-        MAPPINGS.put("isEmpty", "method_7960");
-        MAPPINGS.put("getCount", "method_7947");
-        MAPPINGS.put("getItem", "method_7909");
-        MAPPINGS.put("getMaxDamage", "method_7936");
-        MAPPINGS.put("getDamage", "method_7919");
-        MAPPINGS.put("requestRespawn", "method_7331");
-        MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
-        MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
-        MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
-        MAPPINGS.put("doItemUse", is1214 ? "method_1583" : "method_1531");
-        MAPPINGS.put("interactItem", is1214 ? "method_2919" : "method_2896");
-        MAPPINGS.put("interactBlock", is1214 ? "method_2896" : "method_2905");
-        MAPPINGS.put("swingHand", "method_6104");
-        MAPPINGS.put("getEntity", "method_17770");
-        MAPPINGS.put("getBlockPos", "method_17777");
-        MAPPINGS.put("getSide", "method_17778");
-        MAPPINGS.put("stopUsingItem", "method_2907");
-        MAPPINGS.put("isUsingItem", "method_6115");
-        MAPPINGS.put("getYaw", "method_36454");
-        MAPPINGS.put("getPitch", "method_36455");
-        MAPPINGS.put("setYaw", "method_36456");
-        MAPPINGS.put("setPitch", "method_36457");
-        MAPPINGS.put("getId", "method_10221");
-        MAPPINGS.put("getCommandDispatcher", "method_2886");
-        MAPPINGS.put("getRoot", "method_8257");
-        MAPPINGS.put("addChild", "method_8254");
-        MAPPINGS.put("setPressed", "method_1436");
-        MAPPINGS.put("append", "method_10852");
-        MAPPINGS.put("setStyle", "method_10862");
-        MAPPINGS.put("withColor", "method_1031");
-        MAPPINGS.put("withBold", "method_1039");
-        MAPPINGS.put("withItalic", "method_1044");
-        MAPPINGS.put("withUnderline", "method_1034");
-        MAPPINGS.put("fromRgb", "method_27721");
-        MAPPINGS.put("getLevelProperties", "method_8503");
-        MAPPINGS.put("getScoreboardTeam", "method_2962");
-        MAPPINGS.put("getColor", "method_1135"); // Team.getColor
-        MAPPINGS.put("getStyle", "method_10855");
-        MAPPINGS.put("getRgb", "method_35842"); // TextColor.getRgb
-        MAPPINGS.put("isAccepted", "method_23665");
-        MAPPINGS.put("getAttackCooldownProgressPerTick", "method_26352");
-        MAPPINGS.put("getAttackCooldownProgress", "method_7261");
-        MAPPINGS.put("getBlockPos", "method_17777");
-        MAPPINGS.put("getSide", "method_17778");
-        MAPPINGS.put("attackBlock", is1214 ? "method_2910" : "method_2902");
-        MAPPINGS.put("doAttack", is1214 ? "method_1587" : "method_1536");
-        MAPPINGS.put("attackEntity", is1214 ? "method_2912" : "method_2918");
-        MAPPINGS.put("EntityAttributes", "net/minecraft/class_1320");
-        MAPPINGS.put("GENERIC_ATTACK_SPEED", is1214 ? "field_55212" : "field_6338");
-        MAPPINGS.put("getAttributeValue", "method_6125");
+        // 方法映射 (Yarn / Intermediary -> Mojang Official Native)
+        MAPPINGS.put("getInstance", "getInstance");
+        MAPPINGS.put("getSession", "getUser");
+        MAPPINGS.put("getUsername", "getName");
+        MAPPINGS.put("getNetworkHandler", "getConnection");
+        MAPPINGS.put("getHealth", "getHealth");
+        MAPPINGS.put("getMaxHealth", "getMaxHealth");
+        MAPPINGS.put("getHungerManager", "getFoodData");
+        MAPPINGS.put("getFoodLevel", "getFoodLevel");
+        MAPPINGS.put("getTimeOfDay", "getDayTime");
+        MAPPINGS.put("getTime", "getGameTime");
+        MAPPINGS.put("gameTime", "getGameTime");
+        MAPPINGS.put("dayTime", "getDayTime");
+        MAPPINGS.put("keysById", "ALL");
+        MAPPINGS.put("translationKey", "name");
+        MAPPINGS.put("literal", "literal");
+        MAPPINGS.put("sendMessage", "sendSystemMessage");
+        MAPPINGS.put("getPlayerList", "getOnlinePlayers");
+        MAPPINGS.put("getPlayerListEntries", "getListedOnlinePlayers");
+        MAPPINGS.put("getRegistryEntry", "get");
+        MAPPINGS.put("getProfile", "getProfile");
+        MAPPINGS.put("getDisplayName", "getTabListDisplayName");
+        MAPPINGS.put("getName", "getName");
+        MAPPINGS.put("getString", "getString");
+        MAPPINGS.put("isEmpty", "isEmpty");
+        MAPPINGS.put("getCount", "getCount");
+        MAPPINGS.put("getItem", "getItem");
+        MAPPINGS.put("getMaxDamage", "getMaxDamage");
+        MAPPINGS.put("getDamage", "getDamageValue");
+        MAPPINGS.put("requestRespawn", "respawn");
+        MAPPINGS.put("doAttack", "startAttack");
+        MAPPINGS.put("attackEntity", "attack");
+        MAPPINGS.put("attackBlock", "startDestroyBlock");
+        MAPPINGS.put("doItemUse", "startUseItem");
+        MAPPINGS.put("interactItem", "useItem");
+        MAPPINGS.put("interactBlock", "useItemOn");
+        MAPPINGS.put("swingHand", "swing");
+        MAPPINGS.put("getEntity", "getEntity");
+        MAPPINGS.put("getBlockPos", "getBlockPos");
+        MAPPINGS.put("getSide", "getDirection");
+        MAPPINGS.put("stopUsingItem", "releaseUsingItem");
+        MAPPINGS.put("isUsingItem", "isUsingItem");
+        MAPPINGS.put("getYaw", "getYRot");
+        MAPPINGS.put("getPitch", "getXRot");
+        MAPPINGS.put("setYaw", "setYRot");
+        MAPPINGS.put("setPitch", "setXRot");
+        MAPPINGS.put("getId", "getKey");
+        MAPPINGS.put("getCommandDispatcher", "getCommands");
+        MAPPINGS.put("getRoot", "getRoot");
+        MAPPINGS.put("addChild", "addChild");
+        MAPPINGS.put("setPressed", "setDown");
+        MAPPINGS.put("append", "append");
+        MAPPINGS.put("setStyle", "setStyle");
+        MAPPINGS.put("withColor", "withColor");
+        MAPPINGS.put("withBold", "withBold");
+        MAPPINGS.put("withItalic", "withItalic");
+        MAPPINGS.put("withUnderline", "withUnderlined");
+        MAPPINGS.put("fromRgb", "fromRgb");
+        MAPPINGS.put("getLevelProperties", "getLevelData");
+        MAPPINGS.put("getScoreboardTeam", "getTeam");
+        MAPPINGS.put("getColor", "getColor");
+        MAPPINGS.put("getStyle", "getStyle");
+        MAPPINGS.put("getRgb", "getValue");
+        MAPPINGS.put("isAccepted", "consumesAction");
+        MAPPINGS.put("getAttackCooldownProgressPerTick", "getCurrentItemAttackStrengthDelay");
+        MAPPINGS.put("getAttackCooldownProgress", "getAttackStrengthScale");
+        MAPPINGS.put("EntityAttributes", "net.minecraft.world.entity.ai.attributes.Attributes");
+        MAPPINGS.put("GENERIC_ATTACK_SPEED", "ATTACK_SPEED");
+        MAPPINGS.put("getAttributeValue", "getAttributeValue");
     }
 
     public static String map(String name) {
@@ -265,16 +179,16 @@ public class MappingHelper {
 
     private static String getOfficialClassName(String yarnName) {
         switch (yarnName) {
-            case "MinecraftClient": return "net.minecraft.client.MinecraftClient";
-            case "ClientPlayerEntity": return "net.minecraft.client.network.ClientPlayerEntity";
-            case "ClientPlayNetworkHandler": return "net.minecraft.client.network.ClientPlayNetworkHandler";
-            case "PlayerListEntry": return "net.minecraft.client.network.PlayerListEntry";
+            case "MinecraftClient": return "net.minecraft.client.Minecraft";
+            case "ClientPlayerEntity": return "net.minecraft.client.player.LocalPlayer";
+            case "ClientPlayNetworkHandler": return "net.minecraft.client.multiplayer.ClientPacketListener";
+            case "PlayerListEntry": return "net.minecraft.client.multiplayer.PlayerInfo";
             case "Text": return "net.minecraft.network.chat.Component";
             case "Style": return "net.minecraft.network.chat.Style";
             case "TextColor": return "net.minecraft.network.chat.TextColor";
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
-            case "FishingRodItem": return "net.minecraft.item.FishingRodItem";
+            case "FishingRodItem": return "net.minecraft.world.item.FishingRodItem";
             default: return null;
         }
     }
@@ -371,7 +285,6 @@ public class MappingHelper {
             for (Object obj : clazz.getEnumConstants()) {
                 if (String.valueOf(obj).equals(constantName)) return obj;
             }
-            // Fallback to static field
             return getFieldValue(null, constantName, clazz);
         } catch (Exception ignored) {}
         return null;
@@ -416,35 +329,34 @@ public class MappingHelper {
         names.add(map(yarnName));
         names.add(yarnName);
 
-        if (yarnName.equals("doItemUse")) { names.add("method_1531"); names.add("method_1583"); names.add("method_1581"); }
-        if (yarnName.equals("interactItem")) { names.add("method_2896"); names.add("method_2919"); }
-        if (yarnName.equals("interactBlock")) { names.add("method_2905"); names.add("method_2896"); names.add("method_2902"); }
-        if (yarnName.equals("attackBlock")) { names.add("method_2902"); names.add("method_2910"); names.add("method_2907"); }
-        if (yarnName.equals("doAttack")) { names.add("method_1536"); names.add("method_1587"); names.add("method_1585"); }
-        if (yarnName.equals("attackEntity")) { names.add("method_2918"); names.add("method_2912"); }
-        if (yarnName.equals("dayTime")) { names.add("method_11870"); names.add("comp_2191"); }
-        if (yarnName.equals("gameTime")) { names.add("method_11871"); names.add("comp_2190"); }
-        if (yarnName.equals("getTimeOfDay")) { names.add("method_8510"); }
-        if (yarnName.equals("isUsingItem")) { names.add("method_6115"); names.add("method_5971"); }
-        if (yarnName.equals("isAccepted")) { names.add("method_23665"); }
-        if (yarnName.equals("getAttackCooldownProgressPerTick")) { names.add("method_26352"); }
-        if (yarnName.equals("getAttackCooldownProgress")) { names.add("method_7261"); }
-        if (yarnName.equals("swingHand")) { names.add("method_6104"); }
-        if (yarnName.equals("getName")) { names.add("method_7848"); names.add("method_2963"); }
-        if (yarnName.equals("getString")) { names.add("method_10851"); }
-        if (yarnName.equals("getBlockPos")) { names.add("method_17777"); }
-        if (yarnName.equals("getSide")) { names.add("method_17778"); }
-        if (yarnName.equals("getItem")) { names.add("method_7909"); }
-        if (yarnName.equals("getCount")) { names.add("method_7947"); }
-        if (yarnName.equals("isEmpty")) { names.add("method_7960"); }
-        if (yarnName.equals("getMaxDamage")) { names.add("method_7936"); }
-        if (yarnName.equals("getDamage")) { names.add("method_7919"); }
+        if (yarnName.equals("doItemUse")) { names.add("startUseItem"); names.add("useItem"); names.add("method_1531"); names.add("method_1583"); }
+        if (yarnName.equals("interactItem")) { names.add("useItem"); names.add("method_2896"); names.add("method_2919"); }
+        if (yarnName.equals("interactBlock")) { names.add("useItemOn"); names.add("method_2905"); names.add("method_2896"); }
+        if (yarnName.equals("attackBlock")) { names.add("startDestroyBlock"); names.add("method_2902"); names.add("method_2910"); }
+        if (yarnName.equals("doAttack")) { names.add("startAttack"); names.add("method_1536"); names.add("method_1587"); }
+        if (yarnName.equals("attackEntity")) { names.add("attack"); names.add("method_2918"); names.add("method_2912"); }
+        if (yarnName.equals("dayTime")) { names.add("getDayTime"); names.add("method_11870"); }
+        if (yarnName.equals("gameTime")) { names.add("getGameTime"); names.add("method_11871"); }
+        if (yarnName.equals("getTimeOfDay")) { names.add("getDayTime"); names.add("method_8510"); }
+        if (yarnName.equals("isUsingItem")) { names.add("isUsingItem"); names.add("method_6115"); }
+        if (yarnName.equals("isAccepted")) { names.add("consumesAction"); names.add("isAccepted"); }
+        if (yarnName.equals("getAttackCooldownProgressPerTick")) { names.add("getCurrentItemAttackStrengthDelay"); names.add("method_26352"); }
+        if (yarnName.equals("getAttackCooldownProgress")) { names.add("getAttackStrengthScale"); names.add("method_7261"); }
+        if (yarnName.equals("swingHand")) { names.add("swing"); names.add("method_6104"); }
+        if (yarnName.equals("getName")) { names.add("getName"); names.add("method_7848"); }
+        if (yarnName.equals("getString")) { names.add("getString"); names.add("method_10851"); }
+        if (yarnName.equals("getBlockPos")) { names.add("getBlockPos"); names.add("method_17777"); }
+        if (yarnName.equals("getSide")) { names.add("getDirection"); names.add("getSide"); }
+        if (yarnName.equals("getItem")) { names.add("getItem"); names.add("method_7909"); }
+        if (yarnName.equals("getCount")) { names.add("getCount"); names.add("method_7947"); }
+        if (yarnName.equals("isEmpty")) { names.add("isEmpty"); names.add("method_7960"); }
+        if (yarnName.equals("getMaxDamage")) { names.add("getMaxDamage"); names.add("method_7936"); }
+        if (yarnName.equals("getDamage")) { names.add("getDamageValue"); names.add("getDamage"); }
 
         for (String name : names) {
             try { return invokeMethodInternal(targetObj, clazz, name, args); } catch (NoSuchMethodException ignored) {}
         }
 
-        // 仅在有参数时允许结构化搜索，防止无参混淆 (如将 getItem 误判为 isEmpty)
         if (args.length > 0) {
             try {
                 Method m = findMethodStructural(clazz, args);
@@ -602,8 +514,7 @@ public class MappingHelper {
         if (nh == lastPlayerMapOwner && cachedPlayerMap != null) return cachedPlayerMap;
 
         visited.clear();
-        // 策略 0: 直接根据已知字段名查找 (Mojang / Intermediary / 1.21.11)
-        String[] possibleFields = {"f_104895_", "field_42514", "field_52609", "field_3695", "playerListEntries"};
+        String[] possibleFields = {"playerInfoMap", "playerInfo", "f_104895_", "field_42514", "field_52609", "field_3695", "playerListEntries"};
         for (String fName : possibleFields) {
             try {
                 Field f = nh.getClass().getDeclaredField(fName);
@@ -616,14 +527,12 @@ public class MappingHelper {
             } catch (Exception ignored) {}
         }
 
-        // 策略 1: 扫描 NetworkHandler
         Map<?, ?> found = scanForPlayerMapInternal(nh);
         if (found != null) {
             cachedPlayerMap = found; lastPlayerMapOwner = nh;
             return found;
         }
 
-        // 策略 2: 深度递归扫描
         found = deepSearchPlayerMap(nh, 0);
         if (found != null) {
             cachedPlayerMap = found; lastPlayerMapOwner = nh;
@@ -657,7 +566,7 @@ public class MappingHelper {
     private static boolean isPlayerEntry(Object val) {
         if (val == null) return false;
         String cn = val.getClass().getName();
-        if (cn.contains("PlayerListEntry") || cn.contains("class_640") || cn.contains("NetworkPlayerInfo") || cn.contains("PlayerInfo") || cn.contains("Profile")) return true;
+        if (cn.contains("PlayerInfo") || cn.contains("PlayerListEntry") || cn.contains("class_640") || cn.contains("NetworkPlayerInfo") || cn.contains("Profile")) return true;
         for (Field f : val.getClass().getDeclaredFields()) {
             String ftn = f.getType().getName();
             if (ftn.contains("GameProfile") || ftn.contains("class_1923") || ftn.contains("Profile")) return true;

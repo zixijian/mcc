@@ -10,21 +10,54 @@ base {
     archivesName = "mcc-1.0-dev"
 }
 
+loom {
+    noIntermediateMappings()
+}
+
 repositories {
+    maven {
+        name = "Aliyun"
+        url = "https://maven.aliyun.com/repository/public"
+    }
+    maven {
+        name = "Minecraft"
+        url = "https://libraries.minecraft.net/"
+    }
+    maven {
+        name = "Fabric"
+        url = "https://maven.fabricmc.net/"
+    }
+}
+
+repositories.all { repo ->
+    if (repo instanceof MavenArtifactRepository) {
+        if (repo.url.toString().contains("repo.maven.apache.org") || repo.url.toString().contains("repo1.maven.org")) {
+            repo.url = uri("https://maven.aliyun.com/repository/public")
+        }
+    }
+}
+
+def generateMappingsJar() {
+    def genDir = file("build/generated")
+    genDir.mkdirs()
+    def jarFile = new File(genDir, "mappings.jar")
+    if (!jarFile.exists()) {
+        def tinyContent = "tiny\t2\t0\tintermediary\tnamed\n"
+        def os = new java.util.zip.ZipOutputStream(new FileOutputStream(jarFile))
+        os.putNextEntry(new java.util.zip.ZipEntry("mappings/mappings.tiny"))
+        os.write(tinyContent.getBytes("UTF-8"))
+        os.closeEntry()
+        os.close()
+    }
+    return jarFile
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-}
-
-processResources {
-    inputs.property "version", "1.0.0"
-    filesMatching("fabric.mod.json") {
-        expand "version": "1.0.0"
-    }
+    mappings files(generateMappingsJar())
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    compileOnly "net.fabricmc:sponge-mixin:0.15.5+mixin.0.8.7"
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -45,7 +78,6 @@ jar {
     }
 }
 
-// 确保 dev jar 不会有额外的 -dev 后缀
 tasks.named('sourcesJar') {
     archiveFileName = "mcc-1.0-dev-sources.jar"
 }
