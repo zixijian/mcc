@@ -518,8 +518,8 @@ public class AutomationManager {
 
                     case 1: // Stage 1: Holding (持续按住阶段)
                         try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-                        if (isBow || !isUsing) {
-                            resetUseCooldown(client); // 正在处于 isUsing 状态时切勿盲目置零 rightClickDelay，防止打断/重置进食
+                        if (isBow) {
+                            resetUseCooldown(client); // 仅在弓/三叉戟模式下充能重置冷却
                         }
                         lusePressKey(client, "key.use");
                         luseActiveTicks++;
@@ -531,7 +531,7 @@ public class AutomationManager {
                         boolean finished = false;
                         if (!isBow) {
                             if (luseStarted) {
-                                // 已经开始进食：只有当物品堆叠数量改变 (成功吃下)，或者不再 isUsing 且持续至少 32 ticks 时才完成
+                                // 进食/喝药水动作需要 32 ticks (1.6s)，只有当物品堆叠改变或不再处于 isUsing 且持续至少 32 ticks 时才算完成
                                 if (isLuseStackChanged(player) || (!isUsing && luseActiveTicks >= 32)) {
                                     finished = true;
                                 }
@@ -546,7 +546,6 @@ public class AutomationManager {
                             }
                         }
 
-                        // 判定单次使用动作完成或中断的条件
                         if (finished || luseActiveTicks > 100) {
                             luseReleaseKey(client, "key.use");
                             luseStage = 2;
@@ -636,17 +635,58 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
+            Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
+            if (mainHand == null || im == null) return;
 
-            // 单次原生 doItemUse (Minecraft.startUseItem) 原生精准处理单次方块放置、钓鱼抛竿、食物/药水使用，避免多重触发
+            // 检查当前手持物品是否为钓鱼竿
+            boolean isFishingRod = false;
+            try {
+                Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                if (inv != null) {
+                    int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                    Object main = MappingHelper.getFieldValue(inv, "main", null);
+                    if (main instanceof java.util.List) {
+                        Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                        if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
+                            Object item = MappingHelper.invokeMethod(stack, "getItem");
+                            if (item != null) {
+                                // 1. 优先采用 Class 类型进行匹配，完全免疫混淆和无界面打包等复杂环境
+                                try {
+                                    Class<?> rodClass = MappingHelper.getClass("FishingRodItem");
+                                    if (rodClass.isInstance(item)) {
+                                        isFishingRod = true;
+                                    }
+                                } catch (Exception ignored) {}
+
+                                // 2. 兜底策略：字符串及注册表查询
+                                if (!isFishingRod) {
+                                    String sid = item.toString();
+                                    if (sid.contains("fishing_rod")) {
+                                        isFishingRod = true;
+                                    } else {
+                                        Object registry = MappingHelper.getRegistry("ITEM");
+                                        if (registry != null) {
+                                            Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
+                                            if (identifier != null && identifier.toString().contains("fishing_rod")) {
+                                                isFishingRod = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            // 单次原生 doItemUse (Minecraft.startUseItem) 精准处理单次方块放置、凭空使用、钓鱼抛竿、食物/药水使用，避免多重触发
             MappingHelper.invokeMethod(client, "doItemUse");
 
             // 触发挥手
-            if (mainHand != null) {
-                boolean isUsing = false;
-                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-                if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
-            }
+            boolean isUsing = false;
+            try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+            if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
     }
 
