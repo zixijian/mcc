@@ -517,7 +517,9 @@ public class AutomationManager {
                         break;
 
                     case 1: // Stage 1: Holding (持续按住阶段)
-                        resetUseCooldown(client); // 持续重置右键冷却，确保第二次拉弓能立即启动不被 4 ticks 延迟导致少蓄力
+                        if (isBow) {
+                            resetUseCooldown(client); // 持续重置右键冷却以支持拉弓/三叉戟
+                        }
                         lusePressKey(client, "key.use");
                         luseActiveTicks++;
 
@@ -525,25 +527,26 @@ public class AutomationManager {
                             luseStarted = true;
                         }
 
-                        boolean finishConsume = false;
+                        boolean finished = false;
                         if (!isBow) {
                             if (luseStarted) {
-                                if ((!isUsing && luseActiveTicks >= 5) || isLuseStackChanged(player)) {
-                                    finishConsume = true;
+                                // 已经开始进食：进食至少需要 30 ticks，防止由于状态延迟导致提前松手
+                                if ((!isUsing && luseActiveTicks >= 30) || isLuseStackChanged(player)) {
+                                    finished = true;
                                 }
                             } else {
-                                if (isLuseStackChanged(player) || luseActiveTicks >= 20) {
-                                    finishConsume = true;
+                                if (isLuseStackChanged(player) || luseActiveTicks >= 35) {
+                                    finished = true;
                                 }
                             }
                         } else {
                             if (luseActiveTicks >= maxHoldTicks) {
-                                finishConsume = true;
+                                finished = true;
                             }
                         }
 
                         // 判定单次使用动作完成或中断的条件
-                        if (finishConsume || luseActiveTicks > 100) {
+                        if (finished || luseActiveTicks > 100) {
                             luseReleaseKey(client, "key.use");
                             luseStage = 2;
                             luseDelayTicks = 0;
@@ -678,36 +681,11 @@ public class AutomationManager {
             } catch (Exception ignored) {}
 
             if (isFishingRod) {
-                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，配合 useOnce 等逻辑防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
+                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，防止双重交互
                 MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             } else {
-                // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
+                // 原生 doItemUse 会由 Minecraft 内部完美触发单次方块放置或物品使用，防止多重放置方块
                 MappingHelper.invokeMethod(client, "doItemUse");
-
-                // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
-                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-                if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
-                if (target == null) {
-                    for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
-                        if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
-                            f.setAccessible(true); target = f.get(client); if (target != null) break;
-                        }
-                    }
-                }
-
-                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                    if (res != null) {
-                        boolean accepted = false;
-                        try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
-                            if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
-                        }
-                        if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
-                    }
-                }
-
-                // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
-                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             }
 
             // 4. 强制触发挥手
