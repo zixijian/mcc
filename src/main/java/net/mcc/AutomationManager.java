@@ -517,19 +517,21 @@ public class AutomationManager {
                         break;
 
                     case 1: // Stage 1: Holding (持续按住阶段)
-                        resetUseCooldown(client); // 持续重置右键冷却
+                        if (isBow || !isUsing) {
+                            resetUseCooldown(client); // 正在处于 isUsing 状态时切勿盲目置零 rightClickDelay，防止打断/重置进食
+                        }
                         lusePressKey(client, "key.use");
                         luseActiveTicks++;
 
-                        if (isUsing && luseActiveTicks >= 2) {
+                        if (isUsing) {
                             luseStarted = true;
                         }
 
                         boolean finished = false;
                         if (!isBow) {
                             if (luseStarted) {
-                                // 已经开始进食：普通食物需要 32 ticks (1.6s)，只有当 !isUsing 且持续至少 32 ticks，或者物品堆叠发生变化 (isLuseStackChanged) 时才允许完成
-                                if ((!isUsing && luseActiveTicks >= 32) || isLuseStackChanged(player)) {
+                                // 已经开始进食：普通食物需要 32 ticks (1.6s)，只有当物品堆叠改变或不再 isUsing 且已持续至少 32 ticks 时才允许完成
+                                if (isLuseStackChanged(player) || (!isUsing && luseActiveTicks >= 32)) {
                                     finished = true;
                                 }
                             } else {
