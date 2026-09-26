@@ -60,7 +60,7 @@ public class MappingHelper {
         MAPPINGS.put("experienceLevel", "experienceLevel");
         MAPPINGS.put("experienceProgress", "experienceProgress");
         MAPPINGS.put("totalExperience", "totalExperience");
-        MAPPINGS.put("selectedSlot", "selectedSlot");
+        MAPPINGS.put("selectedSlot", "selected");
         MAPPINGS.put("currentScreen", "screen");
         MAPPINGS.put("main", "items");
         MAPPINGS.put("input", "input");
@@ -196,11 +196,30 @@ public class MappingHelper {
     public static Field findField(Class<?> clazz, String yarnName) throws NoSuchFieldException {
         String mapped = map(yarnName);
         String altMapped = mapped.replace("_", "");
+        java.util.List<String> candidates = new java.util.ArrayList<>();
+        candidates.add(mapped);
+        candidates.add(altMapped);
+        candidates.add(yarnName);
+
+        if (yarnName.equals("selectedSlot")) {
+            candidates.add("selected");
+            candidates.add("selectedSlot");
+            candidates.add("field_7545");
+        } else if (yarnName.equals("main")) {
+            candidates.add("items");
+            candidates.add("main");
+            candidates.add("field_7547");
+        }
+
         Class<?> current = clazz;
         while (current != null && current != Object.class) {
-            try { Field f = current.getDeclaredField(mapped); f.setAccessible(true); return f; } catch (Exception ignored) {}
-            try { Field f = current.getDeclaredField(altMapped); f.setAccessible(true); return f; } catch (Exception ignored) {}
-            try { Field f = current.getDeclaredField(yarnName); f.setAccessible(true); return f; } catch (Exception ignored) {}
+            for (String cand : candidates) {
+                try {
+                    Field f = current.getDeclaredField(cand);
+                    f.setAccessible(true);
+                    return f;
+                } catch (Exception ignored) {}
+            }
             current = current.getSuperclass();
         }
         throw new NoSuchFieldException(yarnName + " (mapped: " + mapped + ") in " + clazz.getName());

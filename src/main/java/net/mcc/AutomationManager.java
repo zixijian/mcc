@@ -786,17 +786,15 @@ public class AutomationManager {
     private static void pressKeyTranslation(Object client, String translationKey) throws Exception {
         Object kb = findKeyBinding(client, translationKey);
         if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", true);
-            try { MappingHelper.invokeMethod(kb, "setPressed", true); } catch (Exception ignored) {}
+            setKeyBindingPressed(kb, true);
         }
     }
 
     private static void releaseKeyTranslation(Object client, String translationKey) throws Exception {
         Object kb = findKeyBinding(client, translationKey);
         if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", false);
-            try { MappingHelper.setFieldValue(kb, "field_1652", 0); } catch (Exception ignored) {}
-            try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
+            setKeyBindingPressed(kb, false);
+            resetKeyBindingCounter(kb);
         }
     }
 
@@ -804,55 +802,27 @@ public class AutomationManager {
         try {
             Object kb = findKeyBinding(client, translationKey);
             if (kb != null) {
-                int count = ((Number) MappingHelper.getFieldValue(kb, "field_1652", null)).intValue();
-                MappingHelper.setFieldValue(kb, "field_1652", count + 1);
+                incrementKeyBindingCounter(kb);
             }
         } catch (Exception ignored) {}
     }
 
     private static Object findKeyBinding(Object client, String translationKey) throws Exception {
-        Object options = MappingHelper.getFieldValue(client, "options", null);
-        Class<?> kbClass = MappingHelper.getClass("KeyBinding");
-        Class<?> curr = options.getClass();
-        while (curr != null && curr != Object.class) {
-            for (java.lang.reflect.Field f : curr.getDeclaredFields()) {
-                if (kbClass.isAssignableFrom(f.getType())) {
-                    try {
-                        f.setAccessible(true);
-                        Object kb = f.get(options);
-                        if (kb != null) {
-                            String tk = (String) MappingHelper.getFieldValue(kb, "translationKey", kbClass);
-                            if (translationKey.equals(tk)) return kb;
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-            curr = curr.getSuperclass();
-        }
-        try {
-            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "keysById", kbClass);
-            if (allKbs != null) {
-                Object kb = allKbs.get(translationKey);
-                if (kb != null) return kb;
-            }
-        } catch (Exception ignored) {}
-        return null;
+        return luseFindKeyBinding(client, translationKey);
     }
 
     private static void lusePressKey(Object client, String translationKey) throws Exception {
         Object kb = luseFindKeyBinding(client, translationKey);
         if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", true);
-            try { MappingHelper.invokeMethod(kb, "setPressed", true); } catch (Exception ignored) {}
+            setKeyBindingPressed(kb, true);
         }
     }
 
     private static void luseReleaseKey(Object client, String translationKey) throws Exception {
         Object kb = luseFindKeyBinding(client, translationKey);
         if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", false);
-            try { MappingHelper.setFieldValue(kb, "field_1661", 0); } catch (Exception ignored) {}
-            try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
+            setKeyBindingPressed(kb, false);
+            resetKeyBindingCounter(kb);
         }
 
         // 显式调用 stopUsingItem 确保弓箭、三叉戟在按键释放时绝对、即时触发释放攻击/抛出
@@ -874,10 +844,35 @@ public class AutomationManager {
         try {
             Object kb = luseFindKeyBinding(client, translationKey);
             if (kb != null) {
-                int count = ((Number) MappingHelper.getFieldValue(kb, "field_1661", null)).intValue();
-                MappingHelper.setFieldValue(kb, "field_1661", count + 1);
+                incrementKeyBindingCounter(kb);
             }
         } catch (Exception ignored) {}
+    }
+
+    private static void setKeyBindingPressed(Object kb, boolean pressed) {
+        if (kb == null) return;
+        try { MappingHelper.setFieldValue(kb, "pressed", pressed); } catch (Exception ignored) {}
+        try { MappingHelper.setFieldValue(kb, "isDown", pressed); } catch (Exception ignored) {}
+        try { MappingHelper.invokeMethod(kb, "setPressed", pressed); } catch (Exception ignored) {}
+        try { MappingHelper.invokeMethod(kb, "setDown", pressed); } catch (Exception ignored) {}
+    }
+
+    private static void resetKeyBindingCounter(Object kb) {
+        if (kb == null) return;
+        try { MappingHelper.setFieldValue(kb, "field_1661", 0); } catch (Exception ignored) {}
+        try { MappingHelper.setFieldValue(kb, "field_1652", 0); } catch (Exception ignored) {}
+        try { MappingHelper.setFieldValue(kb, "clickCount", 0); } catch (Exception ignored) {}
+    }
+
+    private static void incrementKeyBindingCounter(Object kb) {
+        if (kb == null) return;
+        for (String fName : new String[]{"field_1661", "field_1652", "clickCount"}) {
+            try {
+                int count = ((Number) MappingHelper.getFieldValue(kb, fName, null)).intValue();
+                MappingHelper.setFieldValue(kb, fName, count + 1);
+                return;
+            } catch (Exception ignored) {}
+        }
     }
 
     private static Object luseFindKeyBinding(Object client, String translationKey) throws Exception {
@@ -893,27 +888,7 @@ public class AutomationManager {
                         f.setAccessible(true);
                         Object kb = f.get(options);
                         if (kb != null) {
-                            String tk = null;
-                            try {
-                                tk = (String) MappingHelper.getFieldValue(kb, "field_1654", kbClass);
-                            } catch (Exception ignored) {}
-                            if (tk == null) {
-                                try {
-                                    tk = (String) MappingHelper.getFieldValue(kb, "field_1660", kbClass);
-                                } catch (Exception ignored) {}
-                            }
-                            if (tk == null) {
-                                for (java.lang.reflect.Field kf : kb.getClass().getDeclaredFields()) {
-                                    if (kf.getType() == String.class) {
-                                        kf.setAccessible(true);
-                                        String val = (String) kf.get(kb);
-                                        if (val != null && val.startsWith("key.")) {
-                                            tk = val;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
+                            String tk = getKeyBindingTranslationKey(kb, kbClass);
                             if (translationKey.equals(tk)) {
                                 return kb;
                             }
@@ -924,6 +899,20 @@ public class AutomationManager {
             curr = curr.getSuperclass();
         }
 
+        try {
+            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "keysById", kbClass);
+            if (allKbs != null) {
+                Object kb = allKbs.get(translationKey);
+                if (kb != null) return kb;
+            }
+        } catch (Exception ignored) {}
+        try {
+            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "ALL", kbClass);
+            if (allKbs != null) {
+                Object kb = allKbs.get(translationKey);
+                if (kb != null) return kb;
+            }
+        } catch (Exception ignored) {}
         try {
             java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "field_1655", kbClass);
             if (allKbs != null) {
@@ -939,6 +928,36 @@ public class AutomationManager {
             }
         } catch (Exception ignored) {}
 
+        return null;
+    }
+
+    private static String getKeyBindingTranslationKey(Object kb, Class<?> kbClass) {
+        try {
+            Object res = MappingHelper.invokeMethod(kb, "getName");
+            if (res instanceof String && ((String) res).startsWith("key.")) return (String) res;
+        } catch (Exception ignored) {}
+        try {
+            Object res = MappingHelper.invokeMethod(kb, "getCategory");
+            if (res instanceof String && ((String) res).startsWith("key.")) return (String) res;
+        } catch (Exception ignored) {}
+
+        String[] candidateFields = {"name", "translationKey", "field_1654", "field_1660"};
+        for (String fName : candidateFields) {
+            try {
+                String val = (String) MappingHelper.getFieldValue(kb, fName, kbClass);
+                if (val != null && val.startsWith("key.")) return val;
+            } catch (Exception ignored) {}
+        }
+
+        for (java.lang.reflect.Field kf : kb.getClass().getDeclaredFields()) {
+            if (kf.getType() == String.class) {
+                try {
+                    kf.setAccessible(true);
+                    String val = (String) kf.get(kb);
+                    if (val != null && val.startsWith("key.")) return val;
+                } catch (Exception ignored) {}
+            }
+        }
         return null;
     }
 }
