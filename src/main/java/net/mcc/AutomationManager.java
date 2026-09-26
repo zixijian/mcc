@@ -533,9 +533,23 @@ public class AutomationManager {
                             luseStarted = true;
                         }
 
-                        // 判定单次使用动作完成或中断的条件：
-                        // 如果开始使用过（luseStarted = true）且当前不再使用（!isUsing），或者长按超过了一定安全时长（如 100 ticks）
-                        if ((!isBow && luseStarted && !isUsing) || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
+                        boolean finishConsume = false;
+                        if (!isBow) {
+                            if (luseStarted) {
+                                // 已经开始进食/使用，确保在持续足够时长(>=12 ticks)且不再处于使用状态或堆叠减少时才完成
+                                if ((!isUsing && luseActiveTicks >= 12) || isLuseStackChanged(player) || luseActiveTicks >= 40) {
+                                    finishConsume = true;
+                                }
+                            } else {
+                                // 尚未探测到 isUsing，保持按住至堆叠改变或 25 ticks 安全超时
+                                if (isLuseStackChanged(player) || luseActiveTicks >= 25) {
+                                    finishConsume = true;
+                                }
+                            }
+                        }
+
+                        // 判定单次使用动作完成或中断的条件
+                        if (finishConsume || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
                             luseReleaseKey(client, "key.use");
                             luseStage = 2;
                             luseDelayTicks = 0;
