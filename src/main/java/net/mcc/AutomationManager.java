@@ -528,8 +528,8 @@ public class AutomationManager {
                         boolean finished = false;
                         if (!isBow) {
                             if (luseStarted) {
-                                // 已经开始进食：进食动作至少需要 15 ticks，且只有在 !isUsing 且 luseActiveTicks >= 15，或者物品数量发生改变 (isLuseStackChanged) 时才允许判定完成
-                                if ((!isUsing && luseActiveTicks >= 15) || isLuseStackChanged(player)) {
+                                // 已经开始进食：普通食物需要 32 ticks (1.6s)，只有当 !isUsing 且持续至少 32 ticks，或者物品堆叠发生变化 (isLuseStackChanged) 时才允许完成
+                                if ((!isUsing && luseActiveTicks >= 32) || isLuseStackChanged(player)) {
                                     finished = true;
                                 }
                             } else {
