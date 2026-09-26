@@ -679,36 +679,11 @@ public class AutomationManager {
             } catch (Exception ignored) {}
 
             if (isFishingRod) {
-                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，配合 useOnce 等逻辑防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
+                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
                 MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             } else {
-                // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
+                // 原生 doItemUse 会由 Minecraft 内部完美触发单次方块放置或物品使用，防止多重放置方块
                 MappingHelper.invokeMethod(client, "doItemUse");
-
-                // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
-                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-                if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
-                if (target == null) {
-                    for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
-                        if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
-                            f.setAccessible(true); target = f.get(client); if (target != null) break;
-                        }
-                    }
-                }
-
-                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                    if (res != null) {
-                        boolean accepted = false;
-                        try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
-                            if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
-                        }
-                        if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
-                    }
-                }
-
-                // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
-                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             }
 
             // 4. 强制触发挥手
