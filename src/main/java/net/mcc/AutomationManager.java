@@ -513,7 +513,7 @@ public class AutomationManager {
 
                         // 兜底触发 triggerItemUse 以防止某些物品或服务端未响应 interactItem
                         try {
-                            boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+                            isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
                             if (!isUsing) {
                                 triggerItemUse(client, player);
                             }

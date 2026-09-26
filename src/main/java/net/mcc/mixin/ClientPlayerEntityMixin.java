@@ -30,7 +30,7 @@ public class ClientPlayerEntityMixin {
         }
     }
 
-    @Inject(method = {"sendChat", "chat", "sendChatMessage", "method_3143", "method_63667"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    @Inject(method = {"sendChat(Ljava/lang/String;)V", "chat(Ljava/lang/String;)V", "sendChatMessage(Ljava/lang/String;)V", "method_63667(Ljava/lang/String;)V"}, at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void onSendChatMessage(String message, CallbackInfo ci) {
         if (message != null && message.startsWith("/mcc")) {
             if (CommandDispatcher.dispatch(message)) {
