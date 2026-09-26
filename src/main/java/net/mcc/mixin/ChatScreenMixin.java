@@ -1,6 +1,7 @@
 package net.mcc.mixin;
 
 import net.mcc.CommandDispatcher;
+import net.mcc.MappingHelper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
