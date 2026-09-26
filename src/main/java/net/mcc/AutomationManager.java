@@ -511,6 +511,14 @@ public class AutomationManager {
                             } catch (Exception ignored) {}
                         }
 
+                        // 兜底触发 triggerItemUse 以防止某些物品或服务端未响应 interactItem
+                        try {
+                            boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+                            if (!isUsing) {
+                                triggerItemUse(client, player);
+                            }
+                        } catch (Exception ignored) {}
+
                         luseStage = 1;
                         luseActiveTicks = 0;
                         luseStarted = false;
@@ -795,6 +803,7 @@ public class AutomationManager {
         Object kb = findKeyBinding(client, translationKey);
         if (kb != null) {
             MappingHelper.setFieldValue(kb, "pressed", false);
+            try { MappingHelper.setFieldValue(kb, "clickCount", 0); } catch (Exception ignored) {}
             try { MappingHelper.setFieldValue(kb, "field_1652", 0); } catch (Exception ignored) {}
             try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
         }
@@ -804,14 +813,37 @@ public class AutomationManager {
         try {
             Object kb = findKeyBinding(client, translationKey);
             if (kb != null) {
-                int count = ((Number) MappingHelper.getFieldValue(kb, "field_1652", null)).intValue();
-                MappingHelper.setFieldValue(kb, "field_1652", count + 1);
+                int count = 0;
+                try {
+                    count = ((Number) MappingHelper.getFieldValue(kb, "clickCount", null)).intValue();
+                } catch (Exception e1) {
+                    try { count = ((Number) MappingHelper.getFieldValue(kb, "field_1652", null)).intValue(); } catch (Exception ignored) {}
+                }
+                try {
+                    MappingHelper.setFieldValue(kb, "clickCount", count + 1);
+                } catch (Exception e1) {
+                    try { MappingHelper.setFieldValue(kb, "field_1652", count + 1); } catch (Exception ignored) {}
+                }
             }
         } catch (Exception ignored) {}
     }
 
     private static Object findKeyBinding(Object client, String translationKey) throws Exception {
         Object options = MappingHelper.getFieldValue(client, "options", null);
+        if (options == null) return null;
+
+        if ("key.use".equals(translationKey)) {
+            try {
+                Object kb = MappingHelper.getFieldValue(options, "useKey", null);
+                if (kb != null) return kb;
+            } catch (Exception ignored) {}
+        } else if ("key.attack".equals(translationKey)) {
+            try {
+                Object kb = MappingHelper.getFieldValue(options, "attackKey", null);
+                if (kb != null) return kb;
+            } catch (Exception ignored) {}
+        }
+
         Class<?> kbClass = MappingHelper.getClass("KeyBinding");
         Class<?> curr = options.getClass();
         while (curr != null && curr != Object.class) {
@@ -851,6 +883,7 @@ public class AutomationManager {
         Object kb = luseFindKeyBinding(client, translationKey);
         if (kb != null) {
             MappingHelper.setFieldValue(kb, "pressed", false);
+            try { MappingHelper.setFieldValue(kb, "clickCount", 0); } catch (Exception ignored) {}
             try { MappingHelper.setFieldValue(kb, "field_1661", 0); } catch (Exception ignored) {}
             try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
         }
@@ -874,8 +907,17 @@ public class AutomationManager {
         try {
             Object kb = luseFindKeyBinding(client, translationKey);
             if (kb != null) {
-                int count = ((Number) MappingHelper.getFieldValue(kb, "field_1661", null)).intValue();
-                MappingHelper.setFieldValue(kb, "field_1661", count + 1);
+                int count = 0;
+                try {
+                    count = ((Number) MappingHelper.getFieldValue(kb, "clickCount", null)).intValue();
+                } catch (Exception e1) {
+                    try { count = ((Number) MappingHelper.getFieldValue(kb, "field_1661", null)).intValue(); } catch (Exception ignored) {}
+                }
+                try {
+                    MappingHelper.setFieldValue(kb, "clickCount", count + 1);
+                } catch (Exception e1) {
+                    try { MappingHelper.setFieldValue(kb, "field_1661", count + 1); } catch (Exception ignored) {}
+                }
             }
         } catch (Exception ignored) {}
     }
@@ -883,6 +925,19 @@ public class AutomationManager {
     private static Object luseFindKeyBinding(Object client, String translationKey) throws Exception {
         Object options = MappingHelper.getFieldValue(client, "options", null);
         if (options == null) return null;
+
+        if ("key.use".equals(translationKey)) {
+            try {
+                Object kb = MappingHelper.getFieldValue(options, "useKey", null);
+                if (kb != null) return kb;
+            } catch (Exception ignored) {}
+        } else if ("key.attack".equals(translationKey)) {
+            try {
+                Object kb = MappingHelper.getFieldValue(options, "attackKey", null);
+                if (kb != null) return kb;
+            } catch (Exception ignored) {}
+        }
+
         Class<?> kbClass = MappingHelper.getClass("KeyBinding");
 
         Class<?> curr = options.getClass();
@@ -895,8 +950,13 @@ public class AutomationManager {
                         if (kb != null) {
                             String tk = null;
                             try {
-                                tk = (String) MappingHelper.getFieldValue(kb, "field_1654", kbClass);
+                                tk = (String) MappingHelper.getFieldValue(kb, "translationKey", kbClass);
                             } catch (Exception ignored) {}
+                            if (tk == null) {
+                                try {
+                                    tk = (String) MappingHelper.getFieldValue(kb, "field_1654", kbClass);
+                                } catch (Exception ignored) {}
+                            }
                             if (tk == null) {
                                 try {
                                     tk = (String) MappingHelper.getFieldValue(kb, "field_1660", kbClass);
@@ -924,6 +984,13 @@ public class AutomationManager {
             curr = curr.getSuperclass();
         }
 
+        try {
+            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "keysById", kbClass);
+            if (allKbs != null) {
+                Object kb = allKbs.get(translationKey);
+                if (kb != null) return kb;
+            }
+        } catch (Exception ignored) {}
         try {
             java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "field_1655", kbClass);
             if (allKbs != null) {

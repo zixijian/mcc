@@ -211,6 +211,11 @@ public class MappingHelper {
         } else if (yarnName.equals("inventory")) {
             names.add("inventory");
             names.add("field_7514");
+        } else if (yarnName.equals("clickCount") || yarnName.equals("timesPressed") || yarnName.equals("field_1661") || yarnName.equals("field_1652")) {
+            names.add("clickCount");
+            names.add("timesPressed");
+            names.add("field_1661");
+            names.add("field_1652");
         }
 
         Class<?> current = clazz;
