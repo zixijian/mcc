@@ -517,21 +517,19 @@ public class AutomationManager {
                         break;
 
                     case 1: // Stage 1: Holding (持续按住阶段)
-                        if (isBow) {
-                            resetUseCooldown(client); // 持续重置右键冷却以支持拉弓/三叉戟
-                        }
+                        resetUseCooldown(client); // 持续重置右键冷却
                         lusePressKey(client, "key.use");
                         luseActiveTicks++;
 
-                        if (isUsing) {
+                        if (isUsing && luseActiveTicks >= 2) {
                             luseStarted = true;
                         }
 
                         boolean finished = false;
                         if (!isBow) {
                             if (luseStarted) {
-                                // 已经开始进食：进食至少需要 30 ticks，防止由于状态延迟导致提前松手
-                                if ((!isUsing && luseActiveTicks >= 30) || isLuseStackChanged(player)) {
+                                // 已经开始进食：进食动作至少需要 15 ticks，且只有在 !isUsing 且 luseActiveTicks >= 15，或者物品数量发生改变 (isLuseStackChanged) 时才允许判定完成
+                                if ((!isUsing && luseActiveTicks >= 15) || isLuseStackChanged(player)) {
                                     finished = true;
                                 }
                             } else {
@@ -564,7 +562,7 @@ public class AutomationManager {
 
                     case 2: // Stage 2: Delay (延迟/缓冲阶段)
                         luseDelayTicks++;
-                        boolean canProceed = luseDelayTicks >= 8;
+                        boolean canProceed = luseDelayTicks >= 8 && !isUsing;
                         if (canProceed && !isBow && lastLuseSlot != -1) {
                             if (!isLuseStackChanged(player) && luseDelayTicks < 60) {
                                 canProceed = false;
@@ -681,11 +679,36 @@ public class AutomationManager {
             } catch (Exception ignored) {}
 
             if (isFishingRod) {
-                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，防止双重交互
+                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，配合 useOnce 等逻辑防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
                 MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             } else {
-                // 原生 doItemUse 会由 Minecraft 内部完美触发单次方块放置或物品使用，防止多重放置方块
+                // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
                 MappingHelper.invokeMethod(client, "doItemUse");
+
+                // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
+                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+                if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
+                if (target == null) {
+                    for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
+                        if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
+                            f.setAccessible(true); target = f.get(client); if (target != null) break;
+                        }
+                    }
+                }
+
+                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
+                    if (res != null) {
+                        boolean accepted = false;
+                        try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
+                            if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
+                        }
+                        if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
+                    }
+                }
+
+                // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
+                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             }
 
             // 4. 强制触发挥手
