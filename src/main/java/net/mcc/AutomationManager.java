@@ -405,7 +405,6 @@ public class AutomationManager {
             // 3. 使用逻辑
             if (useOnce) {
                 resetUseCooldown(client);
-                incrementKeyCounter(client, "key.use");
                 triggerItemUse(client, player);
                 useOnce = false;
             } else if (useFreq == 0) {
@@ -421,7 +420,6 @@ public class AutomationManager {
                 releaseKeyTranslation(client, "key.use");
                 if (--useTimer <= 0) {
                     resetUseCooldown(client);
-                    incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
                     useTimer = useFreq;
                 }
@@ -517,9 +515,9 @@ public class AutomationManager {
                         }
 
                         // 判定单次使用动作完成或中断的条件：
-                        // 对于食物等消耗品，必须在按住至少 5 ticks 后且!isUsing才代表真正完成；避免在前 1-4 ticks 状态波动误判
-                        if ((!isBow && luseActiveTicks >= 5 && luseStarted && !isUsing) || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
-                            luseReleaseKey(client, "key.use");
+                        // 对于食物等消耗品，按住至少 10 ticks 且!isUsing，或者蓄力达到 35 ticks 代表真正完成
+                        if ((!isBow && ((luseActiveTicks >= 10 && luseStarted && !isUsing) || luseActiveTicks >= 35)) || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
+                            luseReleaseKey(client, "key.use", isBow);
                             luseStage = 2;
                             luseDelayTicks = 0;
 
@@ -737,26 +735,32 @@ public class AutomationManager {
         }
     }
 
-    private static void luseReleaseKey(Object client, String translationKey) throws Exception {
+    private static void luseReleaseKey(Object client, String translationKey, boolean forceStopUsing) throws Exception {
         Object kb = luseFindKeyBinding(client, translationKey);
         if (kb != null) {
             setKeyBindingPressed(kb, false);
             resetKeyBindingCounter(kb);
         }
 
-        // 显式调用 stopUsingItem 确保弓箭、三叉戟在按键释放时绝对、即时触发释放攻击/抛出
-        Object player = CommandDispatcher.getClientPlayer();
-        if (player != null) {
-            boolean isUsing = false;
-            try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-            if (isUsing) {
-                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                if (im != null) {
-                    try { MappingHelper.invokeMethod(im, "stopUsingItem", player); } catch (Exception ignored) {}
-                    try { MappingHelper.invokeMethod(im, "method_2907", player); } catch (Exception ignored) {}
+        // 显式调用 stopUsingItem 仅在手持弓箭、三叉戟(forceStopUsing)按键释放时触发，确保绝对不打断食物/药水进食
+        if (forceStopUsing) {
+            Object player = CommandDispatcher.getClientPlayer();
+            if (player != null) {
+                boolean isUsing = false;
+                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+                if (isUsing) {
+                    Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                    if (im != null) {
+                        try { MappingHelper.invokeMethod(im, "stopUsingItem", player); } catch (Exception ignored) {}
+                        try { MappingHelper.invokeMethod(im, "method_2907", player); } catch (Exception ignored) {}
+                    }
                 }
             }
         }
+    }
+
+    private static void luseReleaseKey(Object client, String translationKey) throws Exception {
+        luseReleaseKey(client, translationKey, false);
     }
 
     private static void luseIncrementKeyCounter(Object client, String translationKey) {
