@@ -116,6 +116,7 @@ public class MappingHelper {
         MAPPINGS.put("getEntity", "getEntity");
         MAPPINGS.put("getBlockPos", "getBlockPos");
         MAPPINGS.put("getSide", "getDirection");
+        MAPPINGS.put("dropSelectedItem", "drop");
         MAPPINGS.put("stopUsingItem", "releaseUsingItem");
         MAPPINGS.put("isUsingItem", "isUsingItem");
         MAPPINGS.put("getYaw", "getYRot");
@@ -348,6 +349,7 @@ public class MappingHelper {
         names.add(map(yarnName));
         names.add(yarnName);
 
+        if (yarnName.equals("dropSelectedItem")) { names.add("drop"); names.add("method_7290"); }
         if (yarnName.equals("doItemUse")) { names.add("startUseItem"); names.add("useItem"); names.add("method_1531"); names.add("method_1583"); }
         if (yarnName.equals("interactItem")) { names.add("useItem"); names.add("method_2896"); names.add("method_2919"); }
         if (yarnName.equals("interactBlock")) { names.add("useItemOn"); names.add("method_2905"); names.add("method_2896"); }
