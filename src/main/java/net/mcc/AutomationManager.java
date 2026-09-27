@@ -614,9 +614,10 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
-            // 1. 原生 doItemUse (处理指向真实方块放置、交互等)
+            // 1. 调用原生 doItemUse (原生处理钓鱼竿抛/收、物品使用、指向真实方块放置等)
             MappingHelper.invokeMethod(client, "doItemUse");
 
+            // 2. 补全指向空气 (MISS) 时的空中凭空放置方块 (AirPlace)
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
 
@@ -630,7 +631,6 @@ public class AutomationManager {
                 } catch (Exception ignored) {}
             }
 
-            // 2. 仅当指向 MISS (空气) 时：构造 Type 为 BLOCK 的凭空 BlockHitResult 触发 interactBlock 实现空中放置方块 (AirPlace)
             if (isMiss) {
                 try {
                     Class<?> bhrClass = MappingHelper.getClass("BlockHitResult");
@@ -638,23 +638,32 @@ public class AutomationManager {
                     Class<?> dirClass = MappingHelper.getClass("Direction");
                     Class<?> bpClass = MappingHelper.getClass("BlockPos");
 
-                    Object pos = null;
-                    try { pos = MappingHelper.invokeMethod(player, "getEyePos"); } catch (Exception e) {
-                        try { pos = MappingHelper.invokeMethod(player, "getPos"); } catch (Exception ignored) {}
-                    }
-                    Object side = MappingHelper.getEnumConstant("Direction", "DOWN");
-                    Object blockPos = MappingHelper.invokeMethod(player, "getBlockPos");
+                    double px = ((Number) MappingHelper.invokeMethod(player, "getX")).doubleValue();
+                    double py = ((Number) MappingHelper.invokeMethod(player, "getEyeY")).doubleValue();
+                    double pz = ((Number) MappingHelper.invokeMethod(player, "getZ")).doubleValue();
 
-                    if (pos != null && side != null && blockPos != null && bhrClass != null && vec3Class != null && dirClass != null && bpClass != null) {
+                    float pitch = ((Number) MappingHelper.invokeMethod(player, "getPitch")).floatValue();
+                    float yaw = ((Number) MappingHelper.invokeMethod(player, "getYaw")).floatValue();
+
+                    double f = Math.cos(-yaw * 0.017453292F - (float) Math.PI);
+                    double f1 = Math.sin(-yaw * 0.017453292F - (float) Math.PI);
+                    double f2 = -Math.cos(-pitch * 0.017453292F);
+                    double f3 = Math.sin(-pitch * 0.017453292F);
+
+                    double hitX = px + f1 * f2 * 2.0;
+                    double hitY = py + f3 * 2.0;
+                    double hitZ = pz + f * f2 * 2.0;
+
+                    Object pos = vec3Class.getConstructor(double.class, double.class, double.class).newInstance(hitX, hitY, hitZ);
+                    Object side = MappingHelper.getEnumConstant("Direction", "UP");
+                    Object blockPos = bpClass.getConstructor(int.class, int.class, int.class)
+                            .newInstance((int) Math.floor(hitX), (int) Math.floor(hitY), (int) Math.floor(hitZ));
+
+                    if (pos != null && side != null && blockPos != null && bhrClass != null) {
                         Object airHitResult = bhrClass.getConstructor(vec3Class, dirClass, bpClass, boolean.class)
                                 .newInstance(pos, side, blockPos, false);
                         MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, airHitResult);
                     }
-                } catch (Exception ignored) {}
-
-                // 凭空使用物品 (喷溅药水、末影珍珠等)
-                try {
-                    MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
                 } catch (Exception ignored) {}
             }
 
