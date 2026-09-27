@@ -402,9 +402,10 @@ public class AutomationManager {
                 waitTicksAfterHalfCharge = -1;
             }
 
-            // 3. 使用逻辑
+            // 3. 使用逻辑 (完全对齐 main 分支)
             if (useOnce) {
                 resetUseCooldown(client);
+                incrementKeyCounter(client, "key.use");
                 triggerItemUse(client, player);
                 useOnce = false;
             } else if (useFreq == 0) {
@@ -420,6 +421,7 @@ public class AutomationManager {
                 releaseKeyTranslation(client, "key.use");
                 if (--useTimer <= 0) {
                     resetUseCooldown(client);
+                    incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
                     useTimer = useFreq;
                 }
@@ -614,60 +616,81 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
-            // 1. 调用原生 doItemUse (原生处理钓鱼竿抛/收、物品使用、指向真实方块放置等)
-            MappingHelper.invokeMethod(client, "doItemUse");
+            // 检查当前手持物品是否为钓鱼竿 (完全复刻 main 分支)
+            boolean isFishingRod = false;
+            try {
+                Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                if (inv != null) {
+                    int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                    Object main = MappingHelper.getFieldValue(inv, "main", null);
+                    if (main instanceof java.util.List) {
+                        Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                        if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
+                            Object item = MappingHelper.invokeMethod(stack, "getItem");
+                            if (item != null) {
+                                // 1. 优先采用 Class 类型进行匹配，完全免疫混淆和无界面打包等复杂环境
+                                try {
+                                    Class<?> rodClass = MappingHelper.getClass("FishingRodItem");
+                                    if (rodClass.isInstance(item)) {
+                                        isFishingRod = true;
+                                    }
+                                } catch (Exception ignored) {}
 
-            // 2. 补全指向空气 (MISS) 时的空中凭空放置方块 (AirPlace)
-            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
-
-            boolean isMiss = true;
-            if (target != null) {
-                try {
-                    Object type = MappingHelper.invokeMethod(target, "getType");
-                    if (type != null && !type.toString().equalsIgnoreCase("MISS")) {
-                        isMiss = false;
+                                // 2. 兜底策略：字符串及注册表查询
+                                if (!isFishingRod) {
+                                    String sid = item.toString();
+                                    if (sid.contains("fishing_rod")) {
+                                        isFishingRod = true;
+                                    } else {
+                                        Object registry = MappingHelper.getRegistry("ITEM");
+                                        if (registry != null) {
+                                            Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
+                                            if (identifier != null && identifier.toString().contains("fishing_rod")) {
+                                                isFishingRod = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
-                } catch (Exception ignored) {}
+                }
+            } catch (Exception ignored) {}
+
+            if (isFishingRod) {
+                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，配合 useOnce 等逻辑防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
+                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+            } else {
+                // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
+                MappingHelper.invokeMethod(client, "doItemUse");
+
+                // 2. 深度补充 interactBlock (针对空中凭空放置方块及 experimental 1.21.11 的木axe等特定插件)
+                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+                if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
+                if (target == null) {
+                    for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
+                        if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
+                            f.setAccessible(true); target = f.get(client); if (target != null) break;
+                        }
+                    }
+                }
+
+                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
+                    if (res != null) {
+                        boolean accepted = false;
+                        try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
+                            if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
+                        }
+                        if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
+                    }
+                }
+
+                // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
+                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             }
 
-            if (isMiss) {
-                try {
-                    Class<?> bhrClass = MappingHelper.getClass("BlockHitResult");
-                    Class<?> vec3Class = MappingHelper.getClass("Vec3");
-                    Class<?> dirClass = MappingHelper.getClass("Direction");
-                    Class<?> bpClass = MappingHelper.getClass("BlockPos");
-
-                    double px = ((Number) MappingHelper.invokeMethod(player, "getX")).doubleValue();
-                    double py = ((Number) MappingHelper.invokeMethod(player, "getEyeY")).doubleValue();
-                    double pz = ((Number) MappingHelper.invokeMethod(player, "getZ")).doubleValue();
-
-                    float pitch = ((Number) MappingHelper.invokeMethod(player, "getPitch")).floatValue();
-                    float yaw = ((Number) MappingHelper.invokeMethod(player, "getYaw")).floatValue();
-
-                    double f = Math.cos(-yaw * 0.017453292F - (float) Math.PI);
-                    double f1 = Math.sin(-yaw * 0.017453292F - (float) Math.PI);
-                    double f2 = -Math.cos(-pitch * 0.017453292F);
-                    double f3 = Math.sin(-pitch * 0.017453292F);
-
-                    double hitX = px + f1 * f2 * 2.0;
-                    double hitY = py + f3 * 2.0;
-                    double hitZ = pz + f * f2 * 2.0;
-
-                    Object pos = vec3Class.getConstructor(double.class, double.class, double.class).newInstance(hitX, hitY, hitZ);
-                    Object side = MappingHelper.getEnumConstant("Direction", "UP");
-                    Object blockPos = bpClass.getConstructor(int.class, int.class, int.class)
-                            .newInstance((int) Math.floor(hitX), (int) Math.floor(hitY), (int) Math.floor(hitZ));
-
-                    if (pos != null && side != null && blockPos != null && bhrClass != null) {
-                        Object airHitResult = bhrClass.getConstructor(vec3Class, dirClass, bpClass, boolean.class)
-                                .newInstance(pos, side, blockPos, false);
-                        MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, airHitResult);
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            // 3. 触发挥手动画
+            // 4. 强制触发挥手
             boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
             if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
