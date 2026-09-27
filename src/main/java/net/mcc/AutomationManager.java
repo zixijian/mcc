@@ -309,6 +309,27 @@ public class AutomationManager {
         return false;
     }
 
+    private static boolean isThrowableItem(Object item) {
+        if (item == null) return false;
+        String name = item.toString().toLowerCase();
+        if (name.contains("potion") || name.contains("ender_pearl") || name.contains("snowball")
+                || name.contains("egg") || name.contains("experience_bottle") || name.contains("experiencebottle")
+                || name.contains("exp_bottle") || name.contains("firework") || name.contains("wind_charge")
+                || name.contains("trident") || name.contains("fire_charge")) {
+            return true;
+        }
+        try {
+            Class<?> itemClass = item.getClass();
+            String clsName = itemClass.getName().toLowerCase();
+            if (clsName.contains("potion") || clsName.contains("enderpearl") || clsName.contains("snowball")
+                    || clsName.contains("egg") || clsName.contains("experiencebottle")
+                    || clsName.contains("trident") || clsName.contains("windcharge")) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     /**
      * 客户端 Tick 回调
      */
@@ -403,11 +424,19 @@ public class AutomationManager {
             }
 
             // 3. 使用逻辑
+            int effectiveUseFreq = useFreq;
+            if (useFreq >= 0 && useFreq <= 10) {
+                LuseStackInfo info = getLuseStackInfo(player);
+                if (info != null && !info.isEmpty && isThrowableItem(info.item)) {
+                    effectiveUseFreq = 10;
+                }
+            }
+
             if (useOnce) {
                 resetUseCooldown(client);
                 triggerItemUse(client, player);
                 useOnce = false;
-            } else if (useFreq == 0) {
+            } else if (effectiveUseFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
                 // 持续按住模式下，如果当前没有在“使用”（如吃东西、拉弓），且没处于物品冷却中，每 4 ticks 触发一次
@@ -441,12 +470,12 @@ public class AutomationManager {
                         }
                     }
                 }
-            } else if (useFreq > 0) {
+            } else if (effectiveUseFreq > 0) {
                 releaseKeyTranslation(client, "key.use");
                 if (--useTimer <= 0) {
                     resetUseCooldown(client);
                     triggerItemUse(client, player);
-                    useTimer = useFreq;
+                    useTimer = effectiveUseFreq;
                 }
             }
 
