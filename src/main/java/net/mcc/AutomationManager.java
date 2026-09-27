@@ -427,16 +427,6 @@ public class AutomationManager {
 
             // 4. Luse (长按使用) 逻辑
             if (luseCount != -2) {
-                // 如果当前屏幕不是 null，用户指令是不中断该状态（只有 stop 停止），
-                // 但如果打开了 GUI，我们不能让它由于在 GUI 中乱发包或者按键锁定而导致问题。
-                // 按照 memory 中的模式，我们可以：
-                // 如果当前有 GUI，为了安全可能需要暂时在 Tick 中不执行状态机动作，但保留其状态，
-                // 或者说，如果 screen 存在，我们不更新状态机。不过上面的代码一开头就有：
-                // if (currentScreen != null) return;
-                // 这意味着如果 currentScreen != null，整个 onClientTick 早就 return 了。
-                // 这说明只要在 GUI 中，onClientTick 就不会走。这也符合“状态保留，只有 stop 能彻底停止”的要求，
-                // 因为一旦关闭 GUI 回到游戏，onClientTick 会继续，状态机可以继续跑！
-
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
 
@@ -465,10 +455,10 @@ public class AutomationManager {
 
                                     if (sid.contains("bow")) {
                                         isBow = true;
-                                        maxHoldTicks = 35; // 弓拉满改到 35 tick
+                                        maxHoldTicks = 35; // 弓拉满 35 tick
                                     } else if (sid.contains("trident") || isTridentClass) {
                                         isBow = true;
-                                        maxHoldTicks = 25; // 三叉戟蓄力改到 25 tick
+                                        maxHoldTicks = 25; // 三叉戟蓄力 25 tick
                                     }
                                 }
                             }
@@ -476,76 +466,91 @@ public class AutomationManager {
                     }
                 } catch (Exception ignored) {}
 
-                switch (luseStage) {
-                    case 0: // Stage 0: Initiation (启动/触发阶段)
-                        resetUseCooldown(client);
-                        lusePressKey(client, "key.use");
-                        luseIncrementKeyCounter(client, "key.use");
+                if (!isBow) {
+                    // 消耗品 (食物、药水等): 持续保持按住右键，由原生机制完成进食，绝对不中途松开按键或调用 stopUsingItem
+                    resetUseCooldown(client);
+                    lusePressKey(client, "key.use");
+                    luseActiveTicks++;
 
-                        // 记录使用前的 stack 信息
-                        if (!isBow) {
-                            LuseStackInfo info = getLuseStackInfo(player);
-                            if (info != null && !info.isEmpty) {
-                                lastLuseSlot = info.slot;
-                                lastLuseItem = info.item;
-                                lastLuseCount = info.count;
-                            } else {
-                                lastLuseSlot = -1;
-                                lastLuseItem = null;
-                                lastLuseCount = -1;
-                            }
+                    if (luseActiveTicks == 1) {
+                        // 初始记录物品 stack 信息
+                        LuseStackInfo info = getLuseStackInfo(player);
+                        if (info != null && !info.isEmpty) {
+                            lastLuseSlot = info.slot;
+                            lastLuseItem = info.item;
+                            lastLuseCount = info.count;
+                        }
+                    }
+
+                    // 检查物品数量是否改变（已成功吃掉 1 个）
+                    if (luseActiveTicks >= 10 && isLuseStackChanged(player)) {
+                        // 物品数量变少或消耗完毕，说明 1 次进食已成功完成！
+                        LuseStackInfo current = getLuseStackInfo(player);
+                        if (current != null && !current.isEmpty) {
+                            lastLuseSlot = current.slot;
+                            lastLuseItem = current.item;
+                            lastLuseCount = current.count;
                         } else {
                             lastLuseSlot = -1;
                             lastLuseItem = null;
                             lastLuseCount = -1;
                         }
+                        luseActiveTicks = 0; // 重置计时器，准备吃下一个
 
-                        luseStage = 1;
-                        luseActiveTicks = 0;
-                        luseStarted = false;
-                        break;
-
-                    case 1: // Stage 1: Holding (持续按住阶段)
-                        resetUseCooldown(client); // 持续重置右键冷却，确保第二次拉弓能立即启动不被 4 ticks 延迟导致少蓄力
-                        lusePressKey(client, "key.use");
-                        luseActiveTicks++;
-
-                        if (isUsing) {
-                            luseStarted = true;
+                        if (luseCount > 0) {
+                            luseCount--;
                         }
-
-                        // 判定单次使用动作完成或中断的条件：
-                        // 对于食物等消耗品，按住至少 10 ticks 且!isUsing，或者蓄力达到 35 ticks 代表真正完成
-                        if ((!isBow && ((luseActiveTicks >= 10 && luseStarted && !isUsing) || luseActiveTicks >= 35)) || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
-                            luseReleaseKey(client, "key.use", isBow);
-                            luseStage = 2;
-                            luseDelayTicks = 0;
-
-                            if (luseCount > 0) {
-                                luseCount--;
-                            }
-                            if (luseCount == 0) {
-                                // 所有次数执行完毕，停止
-                                luseCount = -2;
-                                CommandDispatcher.addFeedback("§a已完成所有长按使用");
-                            }
+                        if (luseCount == 0) {
+                            luseCount = -2;
+                            luseReleaseKey(client, "key.use", false);
+                            CommandDispatcher.addFeedback("§a已完成所有长按使用");
                         }
-                        break;
+                    } else if (luseActiveTicks > 120 && !isUsing) {
+                        // 如果长按了 6 秒且当前并没有在进食（例如饱食度满吃不下普通食物，或者手持非使用物品），自动停止防止死循环
+                        luseCount = -2;
+                        luseReleaseKey(client, "key.use", false);
+                        CommandDispatcher.addFeedback("§e无法继续使用当前物品，已停止长按");
+                    }
+                } else {
+                    // 弓箭 / 三叉戟: 3-stage 状态机 (蓄力 -> 松手射出 -> 缓冲)
+                    switch (luseStage) {
+                        case 0: // Initiation
+                            resetUseCooldown(client);
+                            lusePressKey(client, "key.use");
+                            luseIncrementKeyCounter(client, "key.use");
+                            luseStage = 1;
+                            luseActiveTicks = 0;
+                            break;
 
-                    case 2: // Stage 2: Delay (延迟/缓冲阶段)
-                        luseDelayTicks++;
-                        boolean canProceed = luseDelayTicks >= 8;
-                        if (canProceed && !isBow && lastLuseSlot != -1) {
-                            if (!isLuseStackChanged(player) && luseDelayTicks < 60) {
-                                canProceed = false;
+                        case 1: // Holding
+                            resetUseCooldown(client);
+                            lusePressKey(client, "key.use");
+                            luseActiveTicks++;
+
+                            if (luseActiveTicks >= maxHoldTicks) {
+                                luseReleaseKey(client, "key.use", true); // 只有弓/三叉戟强行 stopUsingItem 松手射出
+                                luseStage = 2;
+                                luseDelayTicks = 0;
+
+                                if (luseCount > 0) {
+                                    luseCount--;
+                                }
+                                if (luseCount == 0) {
+                                    luseCount = -2;
+                                    CommandDispatcher.addFeedback("§a已完成所有长按使用");
+                                }
                             }
-                        }
-                        if (canProceed) {
-                            if (luseCount != -2) {
-                                luseStage = 0;
+                            break;
+
+                        case 2: // Delay
+                            luseDelayTicks++;
+                            if (luseDelayTicks >= 8) {
+                                if (luseCount != -2) {
+                                    luseStage = 0;
+                                }
                             }
-                        }
-                        break;
+                            break;
+                    }
                 }
             }
         } catch (Throwable ignored) {}
@@ -605,15 +610,26 @@ public class AutomationManager {
 
     private static void triggerItemUse(Object client, Object player) {
         try {
-            MappingHelper.invokeMethod(client, "doItemUse");
+            Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-            if (mainHand != null) {
-                boolean isUsing = false;
-                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-                if (!isUsing) {
-                    try { MappingHelper.invokeMethod(player, "swingHand", mainHand); } catch (Exception ignored) {}
-                }
+            if (mainHand == null || im == null) return;
+
+            // 1. 原生 doItemUse (处理指向方块放置、交互等)
+            MappingHelper.invokeMethod(client, "doItemUse");
+
+            // 2. 针对 MISS (凭空/指向空气) 目标补全 interactItem (用以触发喷溅药水、末影珍珠、火箭、风弹等凭空物品使用)
+            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
+
+            if (target == null || !MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+                try {
+                    MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                } catch (Exception ignored) {}
             }
+
+            // 3. 触发挥手动画
+            boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
+            if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
     }
 
