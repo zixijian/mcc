@@ -29,27 +29,6 @@ public class PerformanceMonitor {
     /**
      * 获取估算的游戏时间，支持平滑增加
      */
-    public static synchronized long getEstimatedGameTime() {
-        if (lastGameTime == -1 || lastSyncRealTime == -1) return -1;
-        long now = System.currentTimeMillis();
-        long deltaReal = now - lastSyncRealTime;
-        if (deltaReal > 0 && deltaReal < 60000) {
-            double currentTps = 20.0;
-            if (count >= 2) {
-                long totalReal = 0;
-                long totalTicks = 0;
-                for (int i = 0; i < count; i++) {
-                    totalReal += timeSamples[i];
-                    totalTicks += tickSamples[i];
-                }
-                if (totalReal > 0) currentTps = Math.min(20.0, (totalTicks * 1000.0) / totalReal);
-            }
-            long extraTicks = (long)(deltaReal * currentTps / 1000.0);
-            return lastGameTime + extraTicks;
-        }
-        return lastGameTime;
-    }
-
     public static synchronized long getEstimatedDayTime() {
         if (lastDayTime == -1 || lastSyncRealTime == -1) return -1;
 

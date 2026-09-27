@@ -152,46 +152,31 @@ public class CommandDispatcher {
         LocalDateTime now = LocalDateTime.now(ZoneId.of("GMT+8"));
         Object world = getClientWorld();
 
-        long gameTime = PerformanceMonitor.getEstimatedGameTime();
+        // 优先使用插值后的估算时间
         long dayTime = PerformanceMonitor.getEstimatedDayTime();
 
-        if ((gameTime == -1 || dayTime == -1) && world != null) {
-            String[] gMethods = {"getGameTime", "getTime", "method_11871", "method_145"};
-            for (String m : gMethods) {
+        // 如果缓存失效且插值不可用，尝试从 world 对象获取
+        if (dayTime == -1 && world != null) {
+            String[] methods = {"getDayTime", "getTimeOfDay", "getTime", "getGameTime", "method_8510", "method_11871", "method_145", "method_144"};
+            for (String m : methods) {
                 try {
                     Object res = MappingHelper.invokeMethod(world, m);
                     if (res instanceof Number && ((Number)res).longValue() >= 0) {
-                        gameTime = ((Number)res).longValue(); break;
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            String[] dMethods = {"getDayTime", "getTimeOfDay", "method_8510", "method_11870", "method_144"};
-            for (String m : dMethods) {
-                try {
-                    Object res = MappingHelper.invokeMethod(world, m);
-                    if (res instanceof Number) {
                         dayTime = ((Number)res).longValue(); break;
                     }
                 } catch (Exception ignored) {}
             }
         }
 
-        if (dayTime == -1 && gameTime == -1) {
+        if (dayTime == -1) {
             addFeedback("§c无法获取游戏时间");
             return;
         }
 
-        long effectiveDayTime = dayTime != -1 ? dayTime : gameTime;
-        long effectiveGameTime = gameTime != -1 ? gameTime : Math.abs(effectiveDayTime);
-
-        // MiniHUD 规则: dayTime >= 0 取 dayTime / 24000; 领地冻结时间 (dayTime < 0) 取 gameTime / 24000
-        long day = (effectiveDayTime >= 0 ? effectiveDayTime : effectiveGameTime) / 24000;
-
-        // 时刻 HH:MM 转换
-        long timeOfDay = Math.abs(effectiveDayTime) % 24000;
-        long hh = (timeOfDay / 1000 + 6) % 24;
-        long mm = (timeOfDay % 1000) * 60 / 1000;
+        long day = dayTime / 24000;
+        long hh = (dayTime % 24000) / 1000 + 6;
+        if (hh >= 24) hh -= 24;
+        long mm = (dayTime % 1000) * 60 / 1000;
 
         addFeedback(String.format("§e现实时间: %s", now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
         addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", day, hh, mm));
