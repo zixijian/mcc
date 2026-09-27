@@ -35,12 +35,19 @@ public class InventoryManager {
                     }
                 } catch (Exception ignored) {}
 
-                // 2. 尝试手动发送 UpdateSelectedSlotC2SPacket
+                // 2. 尝试手动发送 UpdateSelectedSlotC2SPacket / ServerboundSetCarriedItemPacket
                 try {
-                    Class<?> packetClass = MappingHelper.getClass("net/minecraft/class_2868"); // UpdateSelectedSlotC2SPacket
-                    Object packet = packetClass.getConstructor(int.class).newInstance(slot);
-                    // method_10743 = sendPacket (ClientPlayNetworkHandler)
-                    MappingHelper.invokeMethod(nh, "method_10743", packet);
+                    Class<?> packetClass = null;
+                    try { packetClass = MappingHelper.getClass("net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket"); } catch (Exception ignored) {}
+                    if (packetClass == null) {
+                        try { packetClass = MappingHelper.getClass("net/minecraft/class_2868"); } catch (Exception ignored) {}
+                    }
+                    if (packetClass != null) {
+                        Object packet = packetClass.getConstructor(int.class).newInstance(slot);
+                        try { MappingHelper.invokeMethod(nh, "send", packet); } catch (Exception e) {
+                            try { MappingHelper.invokeMethod(nh, "method_10743", packet); } catch (Exception ignored) {}
+                        }
+                    }
                 } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
@@ -81,11 +88,15 @@ public class InventoryManager {
                     Thread.sleep(50); // 增加同步等待时间
                 }
 
-                // 扔出物品: player.dropSelectedItem(true)
+                // 扔出物品: player.drop(true) / dropSelectedItem
                 try {
-                    MappingHelper.invokeMethod(player, "method_7290", true);
-                } catch (Exception e) {
-                    try { MappingHelper.invokeMethod(player, "dropSelectedItem", true); } catch (Exception ignored) {}
+                    MappingHelper.invokeMethod(player, "dropSelectedItem", true);
+                } catch (Exception e1) {
+                    try {
+                        MappingHelper.invokeMethod(player, "drop", true);
+                    } catch (Exception e2) {
+                        try { MappingHelper.invokeMethod(player, "method_7290", true); } catch (Exception ignored) {}
+                    }
                 }
 
                 if (target != current) {
@@ -112,9 +123,13 @@ public class InventoryManager {
                     Thread.sleep(60); // 切换槽位并等待服务器同步
 
                     try {
-                        MappingHelper.invokeMethod(player, "method_7290", true);
-                    } catch (Exception e) {
-                        try { MappingHelper.invokeMethod(player, "dropSelectedItem", true); } catch (Exception ignored) {}
+                        MappingHelper.invokeMethod(player, "dropSelectedItem", true);
+                    } catch (Exception e1) {
+                        try {
+                            MappingHelper.invokeMethod(player, "drop", true);
+                        } catch (Exception e2) {
+                            try { MappingHelper.invokeMethod(player, "method_7290", true); } catch (Exception ignored) {}
+                        }
                     }
                     Thread.sleep(60); // 等待丢弃动作完成
                 }

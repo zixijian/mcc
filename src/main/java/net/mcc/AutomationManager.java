@@ -614,14 +614,45 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
-            // 1. 原生 doItemUse (处理指向方块放置、交互等)
+            // 1. 原生 doItemUse (处理指向真实方块放置、交互等)
             MappingHelper.invokeMethod(client, "doItemUse");
 
-            // 2. 针对 MISS (凭空/指向空气) 目标补全 interactItem (用以触发喷溅药水、末影珍珠、火箭、风弹等凭空物品使用)
             Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
             if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
 
-            if (target == null || !MappingHelper.getClass("BlockHitResult").isInstance(target)) {
+            boolean isMiss = true;
+            if (target != null) {
+                try {
+                    Object type = MappingHelper.invokeMethod(target, "getType");
+                    if (type != null && !type.toString().equalsIgnoreCase("MISS")) {
+                        isMiss = false;
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // 2. 仅当指向 MISS (空气) 时：构造 Type 为 BLOCK 的凭空 BlockHitResult 触发 interactBlock 实现空中放置方块 (AirPlace)
+            if (isMiss) {
+                try {
+                    Class<?> bhrClass = MappingHelper.getClass("BlockHitResult");
+                    Class<?> vec3Class = MappingHelper.getClass("Vec3");
+                    Class<?> dirClass = MappingHelper.getClass("Direction");
+                    Class<?> bpClass = MappingHelper.getClass("BlockPos");
+
+                    Object pos = null;
+                    try { pos = MappingHelper.invokeMethod(player, "getEyePos"); } catch (Exception e) {
+                        try { pos = MappingHelper.invokeMethod(player, "getPos"); } catch (Exception ignored) {}
+                    }
+                    Object side = MappingHelper.getEnumConstant("Direction", "DOWN");
+                    Object blockPos = MappingHelper.invokeMethod(player, "getBlockPos");
+
+                    if (pos != null && side != null && blockPos != null && bhrClass != null && vec3Class != null && dirClass != null && bpClass != null) {
+                        Object airHitResult = bhrClass.getConstructor(vec3Class, dirClass, bpClass, boolean.class)
+                                .newInstance(pos, side, blockPos, false);
+                        MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, airHitResult);
+                    }
+                } catch (Exception ignored) {}
+
+                // 凭空使用物品 (喷溅药水、末影珍珠等)
                 try {
                     MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
                 } catch (Exception ignored) {}
