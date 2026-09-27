@@ -410,11 +410,36 @@ public class AutomationManager {
             } else if (useFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
-                // 持续按住模式下，如果当前没有在“使用”（如吃东西、拉弓），则尝试触发
+                // 持续按住模式下，如果当前没有在“使用”（如吃东西、拉弓），且没处于物品冷却中，每 4 ticks 触发一次
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
                 if (!isUsing) {
-                    triggerItemUse(client, player);
+                    boolean onCooldown = false;
+                    try {
+                        Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                        if (inv != null) {
+                            int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                            Object main = MappingHelper.getFieldValue(inv, "main", null);
+                            if (main instanceof java.util.List) {
+                                Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                                if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
+                                    Object item = MappingHelper.invokeMethod(stack, "getItem");
+                                    Object cooldowns = MappingHelper.invokeMethod(player, "getItemCooldownManager");
+                                    if (cooldowns != null && item != null) {
+                                        onCooldown = (boolean) MappingHelper.invokeMethod(cooldowns, "isCoolingDown", item);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+
+                    if (!onCooldown) {
+                        useTimer++;
+                        if (useTimer >= 4) {
+                            useTimer = 0;
+                            triggerItemUse(client, player);
+                        }
+                    }
                 }
             } else if (useFreq > 0) {
                 releaseKeyTranslation(client, "key.use");

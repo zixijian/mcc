@@ -173,10 +173,11 @@ public class CommandDispatcher {
             return;
         }
 
-        long day = dayTime / 24000;
-        long hh = (dayTime % 24000) / 1000 + 6;
-        if (hh >= 24) hh -= 24;
-        long mm = (dayTime % 1000) * 60 / 1000;
+        // 100% 对齐 MiniHUD 天数与时刻算法
+        long timeOfDay = Math.abs(dayTime) % 24000;
+        long day = Math.abs(dayTime) / 24000;
+        long hh = (timeOfDay / 1000 + 6) % 24;
+        long mm = (timeOfDay % 1000) * 60 / 1000;
 
         addFeedback(String.format("§e现实时间: %s", now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
         addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", day, hh, mm));
