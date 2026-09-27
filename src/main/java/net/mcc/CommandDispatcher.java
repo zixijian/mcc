@@ -154,7 +154,7 @@ public class CommandDispatcher {
 
         long dayTime = -1;
         if (world != null) {
-            String[] dayTimeMethods = {"getDayTime", "getTimeOfDay", "method_11870", "method_8510"};
+            String[] dayTimeMethods = {"getOverworldClockTime", "getDefaultClockTime", "getDayTime", "getTimeOfDay", "method_11870", "method_8510"};
             for (String m : dayTimeMethods) {
                 try {
                     Object res = MappingHelper.invokeMethod(world, m);
@@ -191,11 +191,12 @@ public class CommandDispatcher {
             return;
         }
 
-        // 100% 对齐 MiniHUD 天数与时刻算法
-        long timeOfDay = Math.abs(dayTime) % 24000;
-        long day = Math.abs(dayTime) / 24000;
-        long hh = (timeOfDay / 1000 + 6) % 24;
-        long mm = (timeOfDay % 1000) * 60 / 1000;
+        // 100% 对齐 MiniHUD 26.2 天数与时刻算法
+        long absTime = Math.abs(dayTime);
+        long day = absTime / 24000;
+        long dayTicks = absTime % 24000;
+        long hh = ((dayTicks / 1000) + 6) % 24;
+        long mm = (int) (dayTicks / 16.666666) % 60;
 
         addFeedback(String.format("§e现实时间: %s", now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
         addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", day, hh, mm));
