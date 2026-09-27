@@ -632,7 +632,7 @@ public class AutomationManager {
                 MappingHelper.invokeMethod(client, "doItemUse");
             } else {
                 // 指向空气 (isMiss == true)：
-                // 1) 优先尝试面前 2 格空中放置方块 (AirPlace)
+                // 1) 优先尝试空中放置方块 (AirPlace)，针对俯视虚空/仰视天空/平视动态决定坐标与Side
                 boolean placedAir = false;
                 try {
                     Class<?> bhrClass = MappingHelper.getClass("BlockHitResult");
@@ -647,17 +647,35 @@ public class AutomationManager {
                     float pitch = ((Number) MappingHelper.invokeMethod(player, "getPitch")).floatValue();
                     float yaw = ((Number) MappingHelper.invokeMethod(player, "getYaw")).floatValue();
 
-                    double f = Math.cos(-yaw * 0.017453292F - (float) Math.PI);
-                    double f1 = Math.sin(-yaw * 0.017453292F - (float) Math.PI);
-                    double f2 = -Math.cos(-pitch * 0.017453292F);
-                    double f3 = Math.sin(-pitch * 0.017453292F);
+                    double hitX, hitY, hitZ;
+                    Object side = MappingHelper.getEnumConstant("Direction", "UP");
 
-                    double hitX = px + f1 * f2 * 2.0;
-                    double hitY = py + f3 * 2.0;
-                    double hitZ = pz + f * f2 * 2.0;
+                    if (pitch > 30.0f) {
+                        // 俯视虚空/向下看：位置设在脚底下方 2.5 格处（安全距离，不触碰玩家碰撞箱）
+                        hitX = px;
+                        hitY = py - 2.5;
+                        hitZ = pz;
+                        side = MappingHelper.getEnumConstant("Direction", "DOWN");
+                    } else if (pitch < -30.0f) {
+                        // 仰视天空/向上看：位置设在头顶上方 2.5 格处
+                        hitX = px;
+                        hitY = py + 2.5;
+                        hitZ = pz;
+                        side = MappingHelper.getEnumConstant("Direction", "UP");
+                    } else {
+                        // 平视水平方向：沿视角延伸 2 格
+                        double f = Math.cos(-yaw * 0.017453292F - (float) Math.PI);
+                        double f1 = Math.sin(-yaw * 0.017453292F - (float) Math.PI);
+                        double f2 = -Math.cos(-pitch * 0.017453292F);
+                        double f3 = Math.sin(-pitch * 0.017453292F);
+
+                        hitX = px + f1 * f2 * 2.0;
+                        hitY = py + f3 * 2.0;
+                        hitZ = pz + f * f2 * 2.0;
+                        side = MappingHelper.getEnumConstant("Direction", "UP");
+                    }
 
                     Object pos = vec3Class.getConstructor(double.class, double.class, double.class).newInstance(hitX, hitY, hitZ);
-                    Object side = MappingHelper.getEnumConstant("Direction", "UP");
                     Object blockPos = bpClass.getConstructor(int.class, int.class, int.class)
                             .newInstance((int) Math.floor(hitX), (int) Math.floor(hitY), (int) Math.floor(hitZ));
 
