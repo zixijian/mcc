@@ -152,20 +152,38 @@ public class CommandDispatcher {
         LocalDateTime now = LocalDateTime.now(ZoneId.of("GMT+8"));
         Object world = getClientWorld();
 
-        // 优先使用插值后的估算时间
-        long dayTime = PerformanceMonitor.getEstimatedDayTime();
-
-        // 如果缓存失效且插值不可用，尝试从 world 对象获取
-        if (dayTime == -1 && world != null) {
-            String[] methods = {"getTimeOfDay", "getTime", "method_8510", "method_11871", "method_145", "method_144"};
-            for (String m : methods) {
+        long dayTime = -1;
+        if (world != null) {
+            String[] dayTimeMethods = {"getDayTime", "getTimeOfDay", "method_11870", "method_8510"};
+            for (String m : dayTimeMethods) {
                 try {
                     Object res = MappingHelper.invokeMethod(world, m);
-                    if (res instanceof Number && ((Number)res).longValue() >= 0) {
-                        dayTime = ((Number)res).longValue(); break;
+                    if (res instanceof Number) {
+                        dayTime = ((Number) res).longValue();
+                        if (dayTime != -1) break;
                     }
                 } catch (Exception ignored) {}
             }
+            if (dayTime == -1) {
+                try {
+                    Object levelData = MappingHelper.invokeMethod(world, "getLevelData");
+                    if (levelData != null) {
+                        for (String m : dayTimeMethods) {
+                            try {
+                                Object res = MappingHelper.invokeMethod(levelData, m);
+                                if (res instanceof Number) {
+                                    dayTime = ((Number) res).longValue();
+                                    if (dayTime != -1) break;
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (dayTime == -1) {
+            dayTime = PerformanceMonitor.getEstimatedDayTime();
         }
 
         if (dayTime == -1) {
@@ -173,10 +191,11 @@ public class CommandDispatcher {
             return;
         }
 
-        long day = dayTime / 24000;
-        long hh = (dayTime % 24000) / 1000 + 6;
-        if (hh >= 24) hh -= 24;
-        long mm = (dayTime % 1000) * 60 / 1000;
+        // 100% 对齐 MiniHUD 天数与时刻算法
+        long timeOfDay = Math.abs(dayTime) % 24000;
+        long day = Math.abs(dayTime) / 24000;
+        long hh = (timeOfDay / 1000 + 6) % 24;
+        long mm = (timeOfDay % 1000) * 60 / 1000;
 
         addFeedback(String.format("§e现实时间: %s", now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
         addFeedback(String.format("§6游戏时间: Day %d, %02d:%02d", day, hh, mm));

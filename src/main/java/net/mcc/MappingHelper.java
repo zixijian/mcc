@@ -45,6 +45,9 @@ public class MappingHelper {
         MAPPINGS.put("Hand", "net.minecraft.world.InteractionHand");
         MAPPINGS.put("Screen", "net.minecraft.client.gui.screens.Screen");
         MAPPINGS.put("FishingRodItem", "net.minecraft.world.item.FishingRodItem");
+        MAPPINGS.put("Direction", "net.minecraft.core.Direction");
+        MAPPINGS.put("BlockPos", "net.minecraft.core.BlockPos");
+        MAPPINGS.put("Vec3", "net.minecraft.world.phys.Vec3");
 
         // 字段映射 (Yarn / Intermediary -> Mojang Official Native)
         MAPPINGS.put("player", "player");
@@ -60,7 +63,7 @@ public class MappingHelper {
         MAPPINGS.put("experienceLevel", "experienceLevel");
         MAPPINGS.put("experienceProgress", "experienceProgress");
         MAPPINGS.put("totalExperience", "totalExperience");
-        MAPPINGS.put("selectedSlot", "selectedSlot");
+        MAPPINGS.put("selectedSlot", "selected");
         MAPPINGS.put("currentScreen", "screen");
         MAPPINGS.put("main", "items");
         MAPPINGS.put("input", "input");
@@ -85,6 +88,8 @@ public class MappingHelper {
         MAPPINGS.put("getMaxHealth", "getMaxHealth");
         MAPPINGS.put("getHungerManager", "getFoodData");
         MAPPINGS.put("getFoodLevel", "getFoodLevel");
+        MAPPINGS.put("getDayTime", "getDayTime");
+        MAPPINGS.put("getGameTime", "getGameTime");
         MAPPINGS.put("getTimeOfDay", "getDayTime");
         MAPPINGS.put("getTime", "getGameTime");
         MAPPINGS.put("gameTime", "getGameTime");
@@ -116,6 +121,7 @@ public class MappingHelper {
         MAPPINGS.put("getEntity", "getEntity");
         MAPPINGS.put("getBlockPos", "getBlockPos");
         MAPPINGS.put("getSide", "getDirection");
+        MAPPINGS.put("dropSelectedItem", "drop");
         MAPPINGS.put("stopUsingItem", "releaseUsingItem");
         MAPPINGS.put("isUsingItem", "isUsingItem");
         MAPPINGS.put("getYaw", "getYRot");
@@ -189,6 +195,10 @@ public class MappingHelper {
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
             case "FishingRodItem": return "net.minecraft.world.item.FishingRodItem";
+            case "Direction": return "net.minecraft.core.Direction";
+            case "BlockPos": return "net.minecraft.core.BlockPos";
+            case "Vec3": return "net.minecraft.world.phys.Vec3";
+            case "BlockHitResult": return "net.minecraft.world.phys.BlockHitResult";
             default: return null;
         }
     }
@@ -196,11 +206,30 @@ public class MappingHelper {
     public static Field findField(Class<?> clazz, String yarnName) throws NoSuchFieldException {
         String mapped = map(yarnName);
         String altMapped = mapped.replace("_", "");
+        java.util.List<String> candidates = new java.util.ArrayList<>();
+        candidates.add(mapped);
+        candidates.add(altMapped);
+        candidates.add(yarnName);
+
+        if (yarnName.equals("selectedSlot")) {
+            candidates.add("selected");
+            candidates.add("selectedSlot");
+            candidates.add("field_7545");
+        } else if (yarnName.equals("main")) {
+            candidates.add("items");
+            candidates.add("main");
+            candidates.add("field_7547");
+        }
+
         Class<?> current = clazz;
         while (current != null && current != Object.class) {
-            try { Field f = current.getDeclaredField(mapped); f.setAccessible(true); return f; } catch (Exception ignored) {}
-            try { Field f = current.getDeclaredField(altMapped); f.setAccessible(true); return f; } catch (Exception ignored) {}
-            try { Field f = current.getDeclaredField(yarnName); f.setAccessible(true); return f; } catch (Exception ignored) {}
+            for (String cand : candidates) {
+                try {
+                    Field f = current.getDeclaredField(cand);
+                    f.setAccessible(true);
+                    return f;
+                } catch (Exception ignored) {}
+            }
             current = current.getSuperclass();
         }
         throw new NoSuchFieldException(yarnName + " (mapped: " + mapped + ") in " + clazz.getName());
@@ -329,15 +358,15 @@ public class MappingHelper {
         names.add(map(yarnName));
         names.add(yarnName);
 
+        if (yarnName.equals("dropSelectedItem") || yarnName.equals("method_7290") || yarnName.equals("drop")) { names.add("drop"); names.add("dropSelectedItem"); names.add("method_7290"); }
         if (yarnName.equals("doItemUse")) { names.add("startUseItem"); names.add("useItem"); names.add("method_1531"); names.add("method_1583"); }
         if (yarnName.equals("interactItem")) { names.add("useItem"); names.add("method_2896"); names.add("method_2919"); }
         if (yarnName.equals("interactBlock")) { names.add("useItemOn"); names.add("method_2905"); names.add("method_2896"); }
         if (yarnName.equals("attackBlock")) { names.add("startDestroyBlock"); names.add("method_2902"); names.add("method_2910"); }
         if (yarnName.equals("doAttack")) { names.add("startAttack"); names.add("method_1536"); names.add("method_1587"); }
         if (yarnName.equals("attackEntity")) { names.add("attack"); names.add("method_2918"); names.add("method_2912"); }
-        if (yarnName.equals("dayTime")) { names.add("getDayTime"); names.add("method_11870"); }
-        if (yarnName.equals("gameTime")) { names.add("getGameTime"); names.add("method_11871"); }
-        if (yarnName.equals("getTimeOfDay")) { names.add("getDayTime"); names.add("method_8510"); }
+        if (yarnName.equals("getDayTime") || yarnName.equals("dayTime") || yarnName.equals("getTimeOfDay")) { names.add("getDayTime"); names.add("method_11870"); names.add("method_8510"); }
+        if (yarnName.equals("getGameTime") || yarnName.equals("gameTime") || yarnName.equals("getTime")) { names.add("getGameTime"); names.add("method_11871"); }
         if (yarnName.equals("isUsingItem")) { names.add("isUsingItem"); names.add("method_6115"); }
         if (yarnName.equals("isAccepted")) { names.add("consumesAction"); names.add("isAccepted"); }
         if (yarnName.equals("getAttackCooldownProgressPerTick")) { names.add("getCurrentItemAttackStrengthDelay"); names.add("method_26352"); }

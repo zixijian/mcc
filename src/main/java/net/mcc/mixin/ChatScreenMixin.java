@@ -13,6 +13,9 @@ public class ChatScreenMixin {
     private void onHandleChatInputWithHistory(String message, boolean addToHistory, CallbackInfoReturnable<Boolean> cir) {
         if (message != null && message.startsWith("/mcc")) {
             if (CommandDispatcher.dispatch(message)) {
+                if (addToHistory) {
+                    addRecentChatToGui(message);
+                }
                 cir.setReturnValue(true);
             }
         }
@@ -22,8 +25,31 @@ public class ChatScreenMixin {
     private void onHandleChatInputSingle(String message, CallbackInfoReturnable<Boolean> cir) {
         if (message != null && message.startsWith("/mcc")) {
             if (CommandDispatcher.dispatch(message)) {
+                addRecentChatToGui(message);
                 cir.setReturnValue(true);
             }
         }
+    }
+
+    private void addRecentChatToGui(String message) {
+        try {
+            Object client = CommandDispatcher.getClient();
+            if (client != null) {
+                Object gui = net.mcc.MappingHelper.getFieldValue(client, "gui", null);
+                if (gui == null) gui = net.mcc.MappingHelper.getFieldValue(client, "ingameGUI", null);
+                if (gui != null) {
+                    Object chatHud = net.mcc.MappingHelper.invokeMethod(gui, "getChat");
+                    if (chatHud != null) {
+                        try {
+                            net.mcc.MappingHelper.invokeMethod(chatHud, "addRecentChat", message);
+                        } catch (Exception e1) {
+                            try {
+                                net.mcc.MappingHelper.invokeMethod(chatHud, "method_1812", message);
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
     }
 }

@@ -36,31 +36,32 @@ public class PerformanceMonitor {
         long now = System.currentTimeMillis();
         long deltaReal = now - lastSyncRealTime;
 
-        // 如果 dayTime >= 0，说明服务器开启了日夜循环
-        // 允许长达 60 秒的插值，以应对极其不稳定的网络或服务器
-        if (lastDayTime >= 0 && deltaReal > 0 && deltaReal < 60000) {
-            double currentTps = 20.0;
-            if (count >= 2) {
-                long totalReal = 0;
-                long totalTicks = 0;
-                for (int i = 0; i < count; i++) {
-                    totalReal += timeSamples[i];
-                    totalTicks += tickSamples[i];
+        // 仅当 lastDayTime >= 0 (未冻结昼夜循环) 时才进行平滑插值递增
+        // 当 lastDayTime < 0 (领地/服务器冻结时间 Flag) 时，不加 extraTicks，直接返回 absTime 保持时间冻结静止
+        if (lastDayTime >= 0) {
+            if (deltaReal > 0 && deltaReal < 60000) {
+                double currentTps = 20.0;
+                if (count >= 2) {
+                    long totalReal = 0;
+                    long totalTicks = 0;
+                    for (int i = 0; i < count; i++) {
+                        totalReal += timeSamples[i];
+                        totalTicks += tickSamples[i];
+                    }
+                    if (totalReal > 0) currentTps = Math.min(20.0, (totalTicks * 1000.0) / totalReal);
                 }
-                if (totalReal > 0) currentTps = Math.min(20.0, (totalTicks * 1000.0) / totalReal);
-            }
 
-            long extraTicks = (long)(deltaReal * currentTps / 1000.0);
-            long estimated = absTime + extraTicks;
+                long extraTicks = (long)(deltaReal * currentTps / 1000.0);
+                long estimated = absTime + extraTicks;
 
-            // 严格单调递增，但允许在服务器时间大幅度落后时进行重置
-            if (lastEstimatedDayTime != -1 && estimated < lastEstimatedDayTime) {
-                if (lastEstimatedDayTime - estimated < 200) { // 小幅度回退（网络波动），保持不变
-                    return lastEstimatedDayTime;
+                if (lastEstimatedDayTime != -1 && estimated < lastEstimatedDayTime) {
+                    if (lastEstimatedDayTime - estimated < 200) {
+                        return lastEstimatedDayTime;
+                    }
                 }
+                lastEstimatedDayTime = estimated;
+                return estimated;
             }
-            lastEstimatedDayTime = estimated;
-            return estimated;
         }
 
         return absTime;

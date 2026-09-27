@@ -309,6 +309,27 @@ public class AutomationManager {
         return false;
     }
 
+    private static boolean isThrowableItem(Object item) {
+        if (item == null) return false;
+        String name = item.toString().toLowerCase();
+        if (name.contains("potion") || name.contains("ender_pearl") || name.contains("snowball")
+                || name.contains("egg") || name.contains("experience_bottle") || name.contains("experiencebottle")
+                || name.contains("exp_bottle") || name.contains("firework") || name.contains("wind_charge")
+                || name.contains("trident") || name.contains("fire_charge")) {
+            return true;
+        }
+        try {
+            Class<?> itemClass = item.getClass();
+            String clsName = itemClass.getName().toLowerCase();
+            if (clsName.contains("potion") || clsName.contains("enderpearl") || clsName.contains("snowball")
+                    || clsName.contains("egg") || clsName.contains("experiencebottle")
+                    || clsName.contains("trident") || clsName.contains("windcharge")) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     /**
      * 客户端 Tick 回调
      */
@@ -403,42 +424,63 @@ public class AutomationManager {
             }
 
             // 3. 使用逻辑
+            int effectiveUseFreq = useFreq;
+            if (useFreq >= 0 && useFreq <= 10) {
+                LuseStackInfo info = getLuseStackInfo(player);
+                if (info != null && !info.isEmpty && isThrowableItem(info.item)) {
+                    effectiveUseFreq = 10;
+                }
+            }
+
             if (useOnce) {
                 resetUseCooldown(client);
-                incrementKeyCounter(client, "key.use");
                 triggerItemUse(client, player);
                 useOnce = false;
-            } else if (useFreq == 0) {
+            } else if (effectiveUseFreq == 0) {
                 resetUseCooldown(client);
                 pressKeyTranslation(client, "key.use");
-                // 持续按住模式下，如果当前没有在“使用”（如吃东西、拉弓），则尝试触发
+                // 持续按住模式下，如果当前没有在“使用”（如吃东西、拉弓），且没处于物品冷却中，每 4 ticks 触发一次
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
                 if (!isUsing) {
-                    triggerItemUse(client, player);
+                    boolean onCooldown = false;
+                    try {
+                        Object inv = MappingHelper.getFieldValue(player, "inventory", null);
+                        if (inv != null) {
+                            int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
+                            Object main = MappingHelper.getFieldValue(inv, "main", null);
+                            if (main instanceof java.util.List) {
+                                Object stack = ((java.util.List<?>) main).get(selectedSlot);
+                                if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
+                                    Object item = MappingHelper.invokeMethod(stack, "getItem");
+                                    Object cooldowns = MappingHelper.invokeMethod(player, "getItemCooldownManager");
+                                    if (cooldowns != null && item != null) {
+                                        onCooldown = (boolean) MappingHelper.invokeMethod(cooldowns, "isCoolingDown", item);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+
+                    if (!onCooldown) {
+                        useTimer++;
+                        if (useTimer >= 4) {
+                            useTimer = 0;
+                            triggerItemUse(client, player);
+                        }
+                    }
                 }
-            } else if (useFreq > 0) {
+            } else if (effectiveUseFreq > 0) {
                 releaseKeyTranslation(client, "key.use");
                 if (--useTimer <= 0) {
                     resetUseCooldown(client);
-                    incrementKeyCounter(client, "key.use");
                     triggerItemUse(client, player);
-                    useTimer = useFreq;
+                    useTimer = effectiveUseFreq;
                 }
             }
 
             // 4. Luse (长按使用) 逻辑
             if (luseCount != -2) {
-                // 如果当前屏幕不是 null，用户指令是不中断该状态（只有 stop 停止），
-                // 但如果打开了 GUI，我们不能让它由于在 GUI 中乱发包或者按键锁定而导致问题。
-                // 按照 memory 中的模式，我们可以：
-                // 如果当前有 GUI，为了安全可能需要暂时在 Tick 中不执行状态机动作，但保留其状态，
-                // 或者说，如果 screen 存在，我们不更新状态机。不过上面的代码一开头就有：
-                // if (currentScreen != null) return;
-                // 这意味着如果 currentScreen != null，整个 onClientTick 早就 return 了。
-                // 这说明只要在 GUI 中，onClientTick 就不会走。这也符合“状态保留，只有 stop 能彻底停止”的要求，
-                // 因为一旦关闭 GUI 回到游戏，onClientTick 会继续，状态机可以继续跑！
-
                 boolean isUsing = false;
                 try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
 
@@ -467,10 +509,10 @@ public class AutomationManager {
 
                                     if (sid.contains("bow")) {
                                         isBow = true;
-                                        maxHoldTicks = 35; // 弓拉满改到 35 tick
+                                        maxHoldTicks = 35; // 弓拉满 35 tick
                                     } else if (sid.contains("trident") || isTridentClass) {
                                         isBow = true;
-                                        maxHoldTicks = 25; // 三叉戟蓄力改到 25 tick
+                                        maxHoldTicks = 25; // 三叉戟蓄力 25 tick
                                     }
                                 }
                             }
@@ -478,85 +520,91 @@ public class AutomationManager {
                     }
                 } catch (Exception ignored) {}
 
-                switch (luseStage) {
-                    case 0: // Stage 0: Initiation (启动/触发阶段)
-                        resetUseCooldown(client);
-                        lusePressKey(client, "key.use");
-                        luseIncrementKeyCounter(client, "key.use");
+                if (!isBow) {
+                    // 消耗品 (食物、药水等): 持续保持按住右键，由原生机制完成进食，绝对不中途松开按键或调用 stopUsingItem
+                    resetUseCooldown(client);
+                    lusePressKey(client, "key.use");
+                    luseActiveTicks++;
 
-                        // 记录使用前的 stack 信息
-                        if (!isBow) {
-                            LuseStackInfo info = getLuseStackInfo(player);
-                            if (info != null && !info.isEmpty) {
-                                lastLuseSlot = info.slot;
-                                lastLuseItem = info.item;
-                                lastLuseCount = info.count;
-                            } else {
-                                lastLuseSlot = -1;
-                                lastLuseItem = null;
-                                lastLuseCount = -1;
-                            }
+                    if (luseActiveTicks == 1) {
+                        // 初始记录物品 stack 信息
+                        LuseStackInfo info = getLuseStackInfo(player);
+                        if (info != null && !info.isEmpty) {
+                            lastLuseSlot = info.slot;
+                            lastLuseItem = info.item;
+                            lastLuseCount = info.count;
+                        }
+                    }
+
+                    // 检查物品数量是否改变（已成功吃掉 1 个）
+                    if (luseActiveTicks >= 10 && isLuseStackChanged(player)) {
+                        // 物品数量变少或消耗完毕，说明 1 次进食已成功完成！
+                        LuseStackInfo current = getLuseStackInfo(player);
+                        if (current != null && !current.isEmpty) {
+                            lastLuseSlot = current.slot;
+                            lastLuseItem = current.item;
+                            lastLuseCount = current.count;
                         } else {
                             lastLuseSlot = -1;
                             lastLuseItem = null;
                             lastLuseCount = -1;
                         }
+                        luseActiveTicks = 0; // 重置计时器，准备吃下一个
 
-                        // 为了避免双重手swing或打断动画，只在第一 tick 尝试一次 interactItem
-                        Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                        Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
-                        if (im != null && mainHand != null) {
-                            try {
-                                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-                            } catch (Exception ignored) {}
+                        if (luseCount > 0) {
+                            luseCount--;
                         }
-
-                        luseStage = 1;
-                        luseActiveTicks = 0;
-                        luseStarted = false;
-                        break;
-
-                    case 1: // Stage 1: Holding (持续按住阶段)
-                        resetUseCooldown(client); // 持续重置右键冷却，确保第二次拉弓能立即启动不被 4 ticks 延迟导致少蓄力
-                        lusePressKey(client, "key.use");
-                        luseActiveTicks++;
-
-                        if (isUsing) {
-                            luseStarted = true;
+                        if (luseCount == 0) {
+                            luseCount = -2;
+                            luseReleaseKey(client, "key.use", false);
+                            CommandDispatcher.addFeedback("§a已完成所有长按使用");
                         }
+                    } else if (luseActiveTicks > 120 && !isUsing) {
+                        // 如果长按了 6 秒且当前并没有在进食（例如饱食度满吃不下普通食物，或者手持非使用物品），自动停止防止死循环
+                        luseCount = -2;
+                        luseReleaseKey(client, "key.use", false);
+                        CommandDispatcher.addFeedback("§e无法继续使用当前物品，已停止长按");
+                    }
+                } else {
+                    // 弓箭 / 三叉戟: 3-stage 状态机 (蓄力 -> 松手射出 -> 缓冲)
+                    switch (luseStage) {
+                        case 0: // Initiation
+                            resetUseCooldown(client);
+                            lusePressKey(client, "key.use");
+                            luseIncrementKeyCounter(client, "key.use");
+                            luseStage = 1;
+                            luseActiveTicks = 0;
+                            break;
 
-                        // 判定单次使用动作完成或中断的条件：
-                        // 如果开始使用过（luseStarted = true）且当前不再使用（!isUsing），或者长按超过了一定安全时长（如 100 ticks）
-                        if ((!isBow && luseStarted && !isUsing) || (isBow && luseActiveTicks >= maxHoldTicks) || luseActiveTicks > 100) {
-                            luseReleaseKey(client, "key.use");
-                            luseStage = 2;
-                            luseDelayTicks = 0;
+                        case 1: // Holding
+                            resetUseCooldown(client);
+                            lusePressKey(client, "key.use");
+                            luseActiveTicks++;
 
-                            if (luseCount > 0) {
-                                luseCount--;
+                            if (luseActiveTicks >= maxHoldTicks) {
+                                luseReleaseKey(client, "key.use", true); // 只有弓/三叉戟强行 stopUsingItem 松手射出
+                                luseStage = 2;
+                                luseDelayTicks = 0;
+
+                                if (luseCount > 0) {
+                                    luseCount--;
+                                }
+                                if (luseCount == 0) {
+                                    luseCount = -2;
+                                    CommandDispatcher.addFeedback("§a已完成所有长按使用");
+                                }
                             }
-                            if (luseCount == 0) {
-                                // 所有次数执行完毕，停止
-                                luseCount = -2;
-                                CommandDispatcher.addFeedback("§a已完成所有长按使用");
-                            }
-                        }
-                        break;
+                            break;
 
-                    case 2: // Stage 2: Delay (延迟/缓冲阶段)
-                        luseDelayTicks++;
-                        boolean canProceed = luseDelayTicks >= 8;
-                        if (canProceed && !isBow && lastLuseSlot != -1) {
-                            if (!isLuseStackChanged(player) && luseDelayTicks < 60) {
-                                canProceed = false;
+                        case 2: // Delay
+                            luseDelayTicks++;
+                            if (luseDelayTicks >= 8) {
+                                if (luseCount != -2) {
+                                    luseStage = 0;
+                                }
                             }
-                        }
-                        if (canProceed) {
-                            if (luseCount != -2) {
-                                luseStage = 0;
-                            }
-                        }
-                        break;
+                            break;
+                    }
                 }
             }
         } catch (Throwable ignored) {}
@@ -620,81 +668,80 @@ public class AutomationManager {
             Object mainHand = MappingHelper.getEnumConstant("Hand", "MAIN_HAND");
             if (mainHand == null || im == null) return;
 
-            // 检查当前手持物品是否为钓鱼竿
-            boolean isFishingRod = false;
-            try {
-                Object inv = MappingHelper.getFieldValue(player, "inventory", null);
-                if (inv != null) {
-                    int selectedSlot = ((Number) MappingHelper.getFieldValue(inv, "selectedSlot", null)).intValue();
-                    Object main = MappingHelper.getFieldValue(inv, "main", null);
-                    if (main instanceof java.util.List) {
-                        Object stack = ((java.util.List<?>) main).get(selectedSlot);
-                        if (stack != null && !(boolean) MappingHelper.invokeMethod(stack, "isEmpty")) {
-                            Object item = MappingHelper.invokeMethod(stack, "getItem");
-                            if (item != null) {
-                                // 1. 优先采用 Class 类型进行匹配，完全免疫混淆和无界面打包等复杂环境
-                                try {
-                                    Class<?> rodClass = MappingHelper.getClass("FishingRodItem");
-                                    if (rodClass.isInstance(item)) {
-                                        isFishingRod = true;
-                                    }
-                                } catch (Exception ignored) {}
+            Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
+            if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
 
-                                // 2. 兜底策略：字符串及注册表查询
-                                if (!isFishingRod) {
-                                    String sid = item.toString();
-                                    if (sid.contains("fishing_rod")) {
-                                        isFishingRod = true;
-                                    } else {
-                                        Object registry = MappingHelper.getRegistry("ITEM");
-                                        if (registry != null) {
-                                            Object identifier = MappingHelper.invokeMethod(registry, "getId", item);
-                                            if (identifier != null && identifier.toString().contains("fishing_rod")) {
-                                                isFishingRod = true;
-                                            }
-                                        }
-                                    }
-                                }
+            boolean isMiss = true;
+            if (target != null) {
+                try {
+                    Object type = MappingHelper.invokeMethod(target, "getType");
+                    if (type != null && !type.toString().equalsIgnoreCase("MISS")) {
+                        isMiss = false;
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            if (!isMiss) {
+                // 指向真实实体/方块 (isMiss == false)：仅精确触发一次 doItemUse (放置 1 个方块，绝不多放)
+                MappingHelper.invokeMethod(client, "doItemUse");
+            } else {
+                // 指向空气 (isMiss == true)：
+                // 1) 优先尝试在当前 3D 视角朝向正前方 2.5 格空中放置方块 (AirPlace)
+                boolean placedAir = false;
+                try {
+                    Class<?> bhrClass = MappingHelper.getClass("BlockHitResult");
+                    Class<?> vec3Class = MappingHelper.getClass("Vec3");
+                    Class<?> dirClass = MappingHelper.getClass("Direction");
+                    Class<?> bpClass = MappingHelper.getClass("BlockPos");
+
+                    double px = ((Number) MappingHelper.invokeMethod(player, "getX")).doubleValue();
+                    double py = ((Number) MappingHelper.invokeMethod(player, "getEyeY")).doubleValue();
+                    double pz = ((Number) MappingHelper.invokeMethod(player, "getZ")).doubleValue();
+
+                    float pitch = ((Number) MappingHelper.invokeMethod(player, "getPitch")).floatValue();
+                    float yaw = ((Number) MappingHelper.invokeMethod(player, "getYaw")).floatValue();
+
+                    double f = Math.cos(-yaw * 0.017453292F - (float) Math.PI);
+                    double f1 = Math.sin(-yaw * 0.017453292F - (float) Math.PI);
+                    double f2 = -Math.cos(-pitch * 0.017453292F);
+                    double f3 = Math.sin(-pitch * 0.017453292F);
+
+                    double dirX = f1 * f2;
+                    double dirY = f3;
+                    double dirZ = f * f2;
+
+                    // 严格对着当前 3D 视角方向向量延伸 2.5 格
+                    double hitX = px + dirX * 2.5;
+                    double hitY = py + dirY * 2.5;
+                    double hitZ = pz + dirZ * 2.5;
+
+                    Object pos = vec3Class.getConstructor(double.class, double.class, double.class).newInstance(hitX, hitY, hitZ);
+                    Object side = MappingHelper.getEnumConstant("Direction", "UP");
+                    Object blockPos = bpClass.getConstructor(int.class, int.class, int.class)
+                            .newInstance((int) Math.floor(hitX), (int) Math.floor(hitY), (int) Math.floor(hitZ));
+
+                    if (pos != null && side != null && blockPos != null && bhrClass != null) {
+                        Object airHitResult = bhrClass.getConstructor(vec3Class, dirClass, bpClass, boolean.class)
+                                .newInstance(pos, side, blockPos, false);
+                        Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, airHitResult);
+                        if (res != null) {
+                            String sRes = String.valueOf(res);
+                            if (sRes.contains("SUCCESS") || sRes.contains("CONSUME")) {
+                                placedAir = true;
                             }
                         }
                     }
+                } catch (Exception ignored) {}
+
+                // 2) 若非空中方块放置（如手持钓鱼竿、喷溅药水、末影珍珠等），仅触发一次 interactItem (抛/收钓鱼竿 100% 成功)
+                if (!placedAir) {
+                    try {
+                        MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
+                    } catch (Exception ignored) {}
                 }
-            } catch (Exception ignored) {}
-
-            if (isFishingRod) {
-                // 针对钓鱼竿，仅调用 interactItem 并跳过 doItemUse，配合 useOnce 等逻辑防止同一 tick 内双重交互导致“cast-then-reel-in”仅见挥手
-                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
-            } else {
-                // 1. 原生 doItemUse (处理放置、火箭、拉弓等)
-                MappingHelper.invokeMethod(client, "doItemUse");
-
-                // 2. 深度补充 interactBlock (针对 experimental 1.21.11 的木axe等特定插件)
-                Object target = MappingHelper.getFieldValue(client, "crosshairTarget", null);
-                if (target == null) target = MappingHelper.findUniqueFieldByType(client, MappingHelper.getClass("net.minecraft.class_239"));
-                if (target == null) {
-                    for (java.lang.reflect.Field f : client.getClass().getDeclaredFields()) {
-                        if (f.getType().getName().contains("class_239") || f.getType().getSimpleName().contains("HitResult")) {
-                            f.setAccessible(true); target = f.get(client); if (target != null) break;
-                        }
-                    }
-                }
-
-                if (target != null && MappingHelper.getClass("BlockHitResult").isInstance(target)) {
-                    Object res = MappingHelper.invokeMethod(im, "interactBlock", player, mainHand, target);
-                    if (res != null) {
-                        boolean accepted = false;
-                        try { accepted = (boolean) MappingHelper.invokeMethod(res, "isAccepted"); } catch (Exception e) {
-                            if (String.valueOf(res).contains("SUCCESS") || String.valueOf(res).contains("CONSUME")) accepted = true;
-                        }
-                        if (accepted) MappingHelper.invokeMethod(client, "doItemUse"); // 同步客户端状态
-                    }
-                }
-
-                // 3. 深度补充 interactItem (钓鱼竿、喷溅药水、末影珍珠)
-                MappingHelper.invokeMethod(im, "interactItem", player, mainHand);
             }
 
-            // 4. 强制触发挥手
+            // 3. 触发挥手动画
             boolean isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem");
             if (!isUsing) MappingHelper.invokeMethod(player, "swingHand", mainHand);
         } catch (Exception ignored) {}
@@ -786,17 +833,15 @@ public class AutomationManager {
     private static void pressKeyTranslation(Object client, String translationKey) throws Exception {
         Object kb = findKeyBinding(client, translationKey);
         if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", true);
-            try { MappingHelper.invokeMethod(kb, "setPressed", true); } catch (Exception ignored) {}
+            setKeyBindingPressed(kb, true);
         }
     }
 
     private static void releaseKeyTranslation(Object client, String translationKey) throws Exception {
         Object kb = findKeyBinding(client, translationKey);
         if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", false);
-            try { MappingHelper.setFieldValue(kb, "field_1652", 0); } catch (Exception ignored) {}
-            try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
+            setKeyBindingPressed(kb, false);
+            resetKeyBindingCounter(kb);
         }
     }
 
@@ -804,80 +849,83 @@ public class AutomationManager {
         try {
             Object kb = findKeyBinding(client, translationKey);
             if (kb != null) {
-                int count = ((Number) MappingHelper.getFieldValue(kb, "field_1652", null)).intValue();
-                MappingHelper.setFieldValue(kb, "field_1652", count + 1);
+                incrementKeyBindingCounter(kb);
             }
         } catch (Exception ignored) {}
     }
 
     private static Object findKeyBinding(Object client, String translationKey) throws Exception {
-        Object options = MappingHelper.getFieldValue(client, "options", null);
-        Class<?> kbClass = MappingHelper.getClass("KeyBinding");
-        Class<?> curr = options.getClass();
-        while (curr != null && curr != Object.class) {
-            for (java.lang.reflect.Field f : curr.getDeclaredFields()) {
-                if (kbClass.isAssignableFrom(f.getType())) {
-                    try {
-                        f.setAccessible(true);
-                        Object kb = f.get(options);
-                        if (kb != null) {
-                            String tk = (String) MappingHelper.getFieldValue(kb, "translationKey", kbClass);
-                            if (translationKey.equals(tk)) return kb;
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-            curr = curr.getSuperclass();
-        }
-        try {
-            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "keysById", kbClass);
-            if (allKbs != null) {
-                Object kb = allKbs.get(translationKey);
-                if (kb != null) return kb;
-            }
-        } catch (Exception ignored) {}
-        return null;
+        return luseFindKeyBinding(client, translationKey);
     }
 
     private static void lusePressKey(Object client, String translationKey) throws Exception {
         Object kb = luseFindKeyBinding(client, translationKey);
         if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", true);
-            try { MappingHelper.invokeMethod(kb, "setPressed", true); } catch (Exception ignored) {}
+            setKeyBindingPressed(kb, true);
+        }
+    }
+
+    private static void luseReleaseKey(Object client, String translationKey, boolean forceStopUsing) throws Exception {
+        Object kb = luseFindKeyBinding(client, translationKey);
+        if (kb != null) {
+            setKeyBindingPressed(kb, false);
+            resetKeyBindingCounter(kb);
+        }
+
+        // 显式调用 stopUsingItem 仅在手持弓箭、三叉戟(forceStopUsing)按键释放时触发，确保绝对不打断食物/药水进食
+        if (forceStopUsing) {
+            Object player = CommandDispatcher.getClientPlayer();
+            if (player != null) {
+                boolean isUsing = false;
+                try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
+                if (isUsing) {
+                    Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
+                    if (im != null) {
+                        try { MappingHelper.invokeMethod(im, "stopUsingItem", player); } catch (Exception ignored) {}
+                        try { MappingHelper.invokeMethod(im, "method_2907", player); } catch (Exception ignored) {}
+                    }
+                }
+            }
         }
     }
 
     private static void luseReleaseKey(Object client, String translationKey) throws Exception {
-        Object kb = luseFindKeyBinding(client, translationKey);
-        if (kb != null) {
-            MappingHelper.setFieldValue(kb, "pressed", false);
-            try { MappingHelper.setFieldValue(kb, "field_1661", 0); } catch (Exception ignored) {}
-            try { MappingHelper.invokeMethod(kb, "setPressed", false); } catch (Exception ignored) {}
-        }
-
-        // 显式调用 stopUsingItem 确保弓箭、三叉戟在按键释放时绝对、即时触发释放攻击/抛出
-        Object player = CommandDispatcher.getClientPlayer();
-        if (player != null) {
-            boolean isUsing = false;
-            try { isUsing = (boolean) MappingHelper.invokeMethod(player, "isUsingItem"); } catch (Exception ignored) {}
-            if (isUsing) {
-                Object im = MappingHelper.getFieldValue(client, "interactionManager", null);
-                if (im != null) {
-                    try { MappingHelper.invokeMethod(im, "stopUsingItem", player); } catch (Exception ignored) {}
-                    try { MappingHelper.invokeMethod(im, "method_2907", player); } catch (Exception ignored) {}
-                }
-            }
-        }
+        luseReleaseKey(client, translationKey, false);
     }
 
     private static void luseIncrementKeyCounter(Object client, String translationKey) {
         try {
             Object kb = luseFindKeyBinding(client, translationKey);
             if (kb != null) {
-                int count = ((Number) MappingHelper.getFieldValue(kb, "field_1661", null)).intValue();
-                MappingHelper.setFieldValue(kb, "field_1661", count + 1);
+                incrementKeyBindingCounter(kb);
             }
         } catch (Exception ignored) {}
+    }
+
+    private static void setKeyBindingPressed(Object kb, boolean pressed) {
+        if (kb == null) return;
+        try { MappingHelper.setFieldValue(kb, "pressed", pressed); } catch (Exception ignored) {}
+        try { MappingHelper.setFieldValue(kb, "isDown", pressed); } catch (Exception ignored) {}
+        try { MappingHelper.invokeMethod(kb, "setPressed", pressed); } catch (Exception ignored) {}
+        try { MappingHelper.invokeMethod(kb, "setDown", pressed); } catch (Exception ignored) {}
+    }
+
+    private static void resetKeyBindingCounter(Object kb) {
+        if (kb == null) return;
+        try { MappingHelper.setFieldValue(kb, "field_1661", 0); } catch (Exception ignored) {}
+        try { MappingHelper.setFieldValue(kb, "field_1652", 0); } catch (Exception ignored) {}
+        try { MappingHelper.setFieldValue(kb, "clickCount", 0); } catch (Exception ignored) {}
+    }
+
+    private static void incrementKeyBindingCounter(Object kb) {
+        if (kb == null) return;
+        for (String fName : new String[]{"field_1661", "field_1652", "clickCount"}) {
+            try {
+                int count = ((Number) MappingHelper.getFieldValue(kb, fName, null)).intValue();
+                MappingHelper.setFieldValue(kb, fName, count + 1);
+                return;
+            } catch (Exception ignored) {}
+        }
     }
 
     private static Object luseFindKeyBinding(Object client, String translationKey) throws Exception {
@@ -893,27 +941,7 @@ public class AutomationManager {
                         f.setAccessible(true);
                         Object kb = f.get(options);
                         if (kb != null) {
-                            String tk = null;
-                            try {
-                                tk = (String) MappingHelper.getFieldValue(kb, "field_1654", kbClass);
-                            } catch (Exception ignored) {}
-                            if (tk == null) {
-                                try {
-                                    tk = (String) MappingHelper.getFieldValue(kb, "field_1660", kbClass);
-                                } catch (Exception ignored) {}
-                            }
-                            if (tk == null) {
-                                for (java.lang.reflect.Field kf : kb.getClass().getDeclaredFields()) {
-                                    if (kf.getType() == String.class) {
-                                        kf.setAccessible(true);
-                                        String val = (String) kf.get(kb);
-                                        if (val != null && val.startsWith("key.")) {
-                                            tk = val;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
+                            String tk = getKeyBindingTranslationKey(kb, kbClass);
                             if (translationKey.equals(tk)) {
                                 return kb;
                             }
@@ -924,6 +952,20 @@ public class AutomationManager {
             curr = curr.getSuperclass();
         }
 
+        try {
+            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "keysById", kbClass);
+            if (allKbs != null) {
+                Object kb = allKbs.get(translationKey);
+                if (kb != null) return kb;
+            }
+        } catch (Exception ignored) {}
+        try {
+            java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "ALL", kbClass);
+            if (allKbs != null) {
+                Object kb = allKbs.get(translationKey);
+                if (kb != null) return kb;
+            }
+        } catch (Exception ignored) {}
         try {
             java.util.Map<?, ?> allKbs = (java.util.Map<?, ?>) MappingHelper.getFieldValue(null, "field_1655", kbClass);
             if (allKbs != null) {
@@ -939,6 +981,36 @@ public class AutomationManager {
             }
         } catch (Exception ignored) {}
 
+        return null;
+    }
+
+    private static String getKeyBindingTranslationKey(Object kb, Class<?> kbClass) {
+        try {
+            Object res = MappingHelper.invokeMethod(kb, "getName");
+            if (res instanceof String && ((String) res).startsWith("key.")) return (String) res;
+        } catch (Exception ignored) {}
+        try {
+            Object res = MappingHelper.invokeMethod(kb, "getCategory");
+            if (res instanceof String && ((String) res).startsWith("key.")) return (String) res;
+        } catch (Exception ignored) {}
+
+        String[] candidateFields = {"name", "translationKey", "field_1654", "field_1660"};
+        for (String fName : candidateFields) {
+            try {
+                String val = (String) MappingHelper.getFieldValue(kb, fName, kbClass);
+                if (val != null && val.startsWith("key.")) return val;
+            } catch (Exception ignored) {}
+        }
+
+        for (java.lang.reflect.Field kf : kb.getClass().getDeclaredFields()) {
+            if (kf.getType() == String.class) {
+                try {
+                    kf.setAccessible(true);
+                    String val = (String) kf.get(kb);
+                    if (val != null && val.startsWith("key.")) return val;
+                } catch (Exception ignored) {}
+            }
+        }
         return null;
     }
 }
