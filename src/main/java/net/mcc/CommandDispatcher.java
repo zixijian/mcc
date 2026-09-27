@@ -157,7 +157,7 @@ public class CommandDispatcher {
 
         // 如果缓存失效且插值不可用，尝试从 world 对象获取
         if (dayTime == -1 && world != null) {
-            String[] methods = {"getTimeOfDay", "getTime", "method_8510", "method_11871", "method_145", "method_144"};
+            String[] methods = {"getDayTime", "getGameTime", "getTimeOfDay", "getTime", "method_8510", "method_11871", "method_145", "method_144"};
             for (String m : methods) {
                 try {
                     Object res = MappingHelper.invokeMethod(world, m);
