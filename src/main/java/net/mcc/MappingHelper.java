@@ -88,6 +88,8 @@ public class MappingHelper {
         MAPPINGS.put("getMaxHealth", "getMaxHealth");
         MAPPINGS.put("getHungerManager", "getFoodData");
         MAPPINGS.put("getFoodLevel", "getFoodLevel");
+        MAPPINGS.put("getOverworldClockTime", "getOverworldClockTime");
+        MAPPINGS.put("getDefaultClockTime", "getDefaultClockTime");
         MAPPINGS.put("getDayTime", "getDayTime");
         MAPPINGS.put("getGameTime", "getGameTime");
         MAPPINGS.put("getTimeOfDay", "getDayTime");
@@ -365,7 +367,8 @@ public class MappingHelper {
         if (yarnName.equals("attackBlock")) { names.add("startDestroyBlock"); names.add("method_2902"); names.add("method_2910"); }
         if (yarnName.equals("doAttack")) { names.add("startAttack"); names.add("method_1536"); names.add("method_1587"); }
         if (yarnName.equals("attackEntity")) { names.add("attack"); names.add("method_2918"); names.add("method_2912"); }
-        if (yarnName.equals("getDayTime") || yarnName.equals("dayTime") || yarnName.equals("getTimeOfDay")) { names.add("getDayTime"); names.add("method_11870"); names.add("method_8510"); }
+        if (yarnName.equals("getOverworldClockTime")) { names.add("getOverworldClockTime"); names.add("getDefaultClockTime"); names.add("getDayTime"); names.add("method_11870"); names.add("method_8510"); }
+        if (yarnName.equals("getDayTime") || yarnName.equals("dayTime") || yarnName.equals("getTimeOfDay")) { names.add("getOverworldClockTime"); names.add("getDayTime"); names.add("method_11870"); names.add("method_8510"); }
         if (yarnName.equals("getGameTime") || yarnName.equals("gameTime") || yarnName.equals("getTime")) { names.add("getGameTime"); names.add("method_11871"); }
         if (yarnName.equals("isUsingItem")) { names.add("isUsingItem"); names.add("method_6115"); }
         if (yarnName.equals("isAccepted")) { names.add("consumesAction"); names.add("isAccepted"); }
