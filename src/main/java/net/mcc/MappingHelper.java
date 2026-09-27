@@ -45,6 +45,9 @@ public class MappingHelper {
         MAPPINGS.put("Hand", "net.minecraft.world.InteractionHand");
         MAPPINGS.put("Screen", "net.minecraft.client.gui.screens.Screen");
         MAPPINGS.put("FishingRodItem", "net.minecraft.world.item.FishingRodItem");
+        MAPPINGS.put("Direction", "net.minecraft.core.Direction");
+        MAPPINGS.put("BlockPos", "net.minecraft.core.BlockPos");
+        MAPPINGS.put("Vec3", "net.minecraft.world.phys.Vec3");
 
         // 字段映射 (Yarn / Intermediary -> Mojang Official Native)
         MAPPINGS.put("player", "player");
@@ -190,6 +193,10 @@ public class MappingHelper {
             case "Input": return "net.minecraft.client.player.Input";
             case "Screen": return "net.minecraft.client.gui.screens.Screen";
             case "FishingRodItem": return "net.minecraft.world.item.FishingRodItem";
+            case "Direction": return "net.minecraft.core.Direction";
+            case "BlockPos": return "net.minecraft.core.BlockPos";
+            case "Vec3": return "net.minecraft.world.phys.Vec3";
+            case "BlockHitResult": return "net.minecraft.world.phys.BlockHitResult";
             default: return null;
         }
     }
